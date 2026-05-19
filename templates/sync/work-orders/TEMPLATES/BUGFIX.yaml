@@ -1,0 +1,24 @@
+# Work Order Template: BUGFIX
+# Use for: Non-critical bugs found during development or review
+# Triggered by: Gemma review, testing, or agent report
+
+id: "WO-XXX"
+type: BUGFIX
+title: ""
+status: ACTIVE
+priority: P2
+assigned_agents: []
+dependencies: []
+plan_ref: ""
+created: ""
+updated: ""
+
+# ─── Bug-Specific Fields ──────────────────────────────────
+description: ""
+reproduction_steps: []
+affected_services: []
+root_cause: ""
+fix_verified: false
+
+# ─── Execution Log ─────────────────────────────────────────
+log: []
