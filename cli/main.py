@@ -65,8 +65,57 @@ def init(project_path: str, name: str | None, agents: str | None, no_git: bool):
 @click.argument("project_path", type=click.Path(exists=True), default=".")
 @click.option("--fix", is_flag=True, help="Auto-fix minor issues")
 def validate(project_path: str, fix: bool):
-    """Validate runtime health."""
-    click.echo(f"stackmind validate {project_path} — Not yet implemented (WO-016 M2)")
+    """Validate runtime health.
+
+    Checks schema compliance, directory structure, protocol integrity,
+    and boot snapshot consistency across all four validation layers.
+
+    Examples:
+
+        stackmind validate
+
+        stackmind validate ./my-project
+
+        stackmind validate --fix
+    """
+    from .validate import Severity, validate as run_validate
+
+    from rich.console import Console
+
+    console = Console()
+    result = run_validate(Path(project_path), fix=fix)
+
+    if result.passed and not result.warnings:
+        console.print("[bold green][PASS] Schema validation[/bold green]")
+        console.print("[bold green][PASS] Structure validation[/bold green]")
+        console.print("[bold green][PASS] Protocol compliance[/bold green]")
+        console.print("[bold green][PASS] Boot integrity[/bold green]")
+        console.print("\n[bold green]Runtime is healthy.[/bold green]")
+    else:
+        for issue in result.issues:
+            if issue.severity == Severity.ERROR:
+                console.print(f"[bold red][FAIL] {issue.layer}: {issue.message}[/bold red]")
+            else:
+                console.print(f"[bold yellow][WARN] {issue.layer}: {issue.message}[/bold yellow]")
+
+        if result.errors:
+            console.print(
+                f"\n[bold red]{len(result.errors)} error(s), "
+                f"{len(result.warnings)} warning(s)[/bold red]"
+            )
+            if not fix:
+                fixable = [i for i in result.issues if i.auto_fixable]
+                if fixable:
+                    console.print(
+                        f"\n[dim]Run `stackmind validate --fix` to auto-fix "
+                        f"{len(fixable)} issue(s).[/dim]"
+                    )
+            raise SystemExit(1)
+        else:
+            console.print(
+                f"\n[bold green][PASS] No errors[/bold green] "
+                f"[dim]({len(result.warnings)} warning(s))[/dim]"
+            )
 
 
 @cli.command()
