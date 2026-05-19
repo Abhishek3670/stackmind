@@ -1,0 +1,18 @@
+version: "1.0.0"
+
+schema_versions:
+  tree: 1
+  boot: 1
+  work_order: 1
+  index: 1
+
+min_cli_version: "1.0.0"
+
+created_at: "2026-05-19T18:30:00+05:30"
+created_by: "stackmind-init"
+
+upgraded_at: null
+upgraded_from: null
+upgraded_by: null
+
+migration_history: []
