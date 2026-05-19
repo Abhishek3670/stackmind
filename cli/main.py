@@ -121,8 +121,22 @@ def validate(project_path: str, fix: bool):
 @cli.command()
 @click.argument("project_path", type=click.Path(exists=True), default=".")
 def doctor(project_path: str):
-    """Check runtime status and compatibility."""
-    click.echo(f"stackmind doctor {project_path} — Not yet implemented (WO-016 M3)")
+    """Check runtime status and compatibility.
+
+    Displays a comprehensive health report including version compatibility,
+    schema alignment, agent session summary, and validation results.
+
+    Examples:
+
+        stackmind doctor
+
+        stackmind doctor ./my-project
+    """
+    from .doctor import doctor as run_doctor
+
+    success = run_doctor(Path(project_path))
+    if not success:
+        raise SystemExit(1)
 
 
 @cli.command()
