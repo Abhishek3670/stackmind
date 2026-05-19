@@ -1,0 +1,5 @@
+.coverage
+scratch/
+cli/_pycache__/
+cli/__pycache__/*
+tests/
