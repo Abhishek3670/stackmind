@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "STACKMIND Work Order",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "title",
+    "status",
+    "priority",
+    "assigned_agents",
+    "dependencies"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^WO-[0-9]{3}$"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "PHASE",
+        "FEATURE",
+        "BUGFIX",
+        "HOTFIX",
+        "REFACTOR",
+        "RESEARCH",
+        "AUDIT",
+        "VALIDATION",
+        "FIX"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "PENDING",
+        "ACTIVE",
+        "BLOCKED",
+        "COMPLETE",
+        "COMPLETED"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "pattern": "^P[0-3]$"
+    },
+    "assigned_agents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plan_ref": {
+      "type": "string"
+    },
+    "created": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^\\{\\{[A-Z0-9_]+\\}\\}$"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "updated": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^\\{\\{[A-Z0-9_]+\\}\\}$"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "completed_at": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^\\{\\{[A-Z0-9_]+\\}\\}$"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "milestones": {
+      "type": "object",
+      "patternProperties": {
+        "^M[0-9]+$": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "assigned": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "READY",
+                "PENDING",
+                "ACTIVE",
+                "BLOCKED",
+                "COMPLETE",
+                "COMPLETED"
+              ]
+            },
+            "completed_at": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\{\\{[A-Z0-9_]+\\}\\}$"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": {
+              "type": "string"
+            },
+            "tasks": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "acceptance": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "gate": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "dependency_graph": {
+      "type": "string"
+    },
+    "agent_assignments": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "log": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}
