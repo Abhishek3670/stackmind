@@ -302,7 +302,7 @@ def validate_protocol(sync_path: Path, agents: list[str], result: ValidationResu
 
     if hash_file.exists() and digest_file.exists():
         stored_hash = hash_file.read_text(encoding="utf-8").strip()
-        content = digest_file.read_bytes()
+        content = digest_file.read_bytes().replace(b"\r\n", b"\n")
         computed_hash = hashlib.sha256(content).hexdigest().upper()
         if stored_hash != computed_hash:
             result.issues.append(Issue(

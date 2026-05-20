@@ -42,13 +42,16 @@ def get_templates_dir() -> Path:
 def compute_protocol_hash(protocol_digest_path: Path) -> str:
     """Compute SHA-256 hash of the PROTOCOL_DIGEST.md file.
 
+    Normalizes line endings to LF before hashing to ensure
+    deterministic output across platforms (Windows CRLF vs Unix LF).
+
     Args:
         protocol_digest_path: Path to the PROTOCOL_DIGEST.md file.
 
     Returns:
         Uppercase hex SHA-256 hash string (64 chars).
     """
-    content = protocol_digest_path.read_bytes()
+    content = protocol_digest_path.read_bytes().replace(b"\r\n", b"\n")
     return hashlib.sha256(content).hexdigest().upper()
 
 
