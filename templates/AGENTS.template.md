@@ -1,6 +1,6 @@
 # AGENTS.md
-Version: v1.0
-Runtime: D021 + D022 + D023.x + D024 + D031
+Version: v1.1
+Runtime: D021 + D022 + D023.x + D024 + D025 + D031
 Authority: CEO → Claude → Gemma → Workers
 Project: {{PROJECT_NAME}}
 
@@ -50,6 +50,45 @@ Never scan all work orders.
 
 ---
 
+# Destructive Operations Protocol (D025)
+
+**Any command that rewrites history, deletes files en masse, or is non-reversible
+requires ALL of the following before execution:**
+
+1. **Backup** — Create a recoverable copy before the operation:
+   - Git history ops: `cp -r .git .git-backup-$(date +%Y%m%d-%H%M%S)`
+   - File deletion ops: archive target files first
+   - Docker ops: tag/export images before removal
+
+2. **Verify preconditions** — Confirm state is clean and expected:
+   - `git status` must be clean (no uncommitted work)
+   - `git log --oneline | wc -l` — record commit count
+   - `ls` target paths — confirm what will be affected
+
+3. **Escalate for approval** — Destructive ops require explicit CEO approval:
+   - Write escalation to `.sync/inbox/CEO/` describing the operation
+   - WAIT for approval before executing
+   - If P0 urgency and CEO unavailable, Claude may approve with documented rationale
+
+4. **Execute with verification** — After the operation:
+   - `git log --oneline | wc -l` — commit count must match expected
+   - Verify working tree files still exist
+   - If mismatch: restore from backup IMMEDIATELY, do not attempt further fixes
+
+5. **Cleanup** — Remove backup only after push/verification succeeds
+
+**Destructive commands include (not exhaustive):**
+- `git filter-repo`, `git filter-branch`
+- `git reset --hard`, `git push --force`
+- `git clean -fd`, `git checkout -- .`
+- `rm -rf`, `del /s`, bulk file deletion
+- `docker system prune`, `docker rmi` (production images)
+- Any command with `--force` flag on shared state
+
+**Violation of D025 is a CRITICAL protocol breach.**
+
+---
+
 # Forbidden Actions
 
 Agents must NEVER:
@@ -63,6 +102,8 @@ Agents must NEVER:
 - modify another agent's files
 - change architecture without Claude approval
 - change product scope without CEO approval
+- run destructive operations without D025 compliance
+- run destructive commands multiple times without restoring from backup between attempts
 
 ---
 

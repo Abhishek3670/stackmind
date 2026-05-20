@@ -10,6 +10,7 @@ stackmind enforces a set of protocols that govern agent behavior, runtime operat
 | **D022** | Work Orders Architecture | Persistent task management |
 | **D023.x** | Protocol Enforcement Patches | Compliance, receipts, graph awareness |
 | **D024** | Mandatory Review Handoff | Quality gate enforcement |
+| **D025** | Destructive Operations Safeguard | Backup-verify-approve before irreversible ops |
 | **D031** | Runtime Compatibility & Migration | Version management |
 
 ## Boot Sequence (D021+)
@@ -235,6 +236,48 @@ Gemma:
 Workers:
 - Implementation only
 ```
+
+## Destructive Operations Safeguard (D025)
+
+Added after the 2026-05-20 source code loss incident where `git filter-repo`
+wiped all repository history and source files.
+
+### Scope
+
+Any command that rewrites git history, deletes files en masse, or cannot be
+undone with a simple `git checkout` or `Ctrl+Z`.
+
+### Mandatory Steps (ALL required, in order)
+
+1. **BACKUP** — Copy `.git/` or archive target files
+2. **VERIFY** — `git status` clean, record commit count, confirm targets
+3. **ESCALATE** — CEO approval required (or Claude with documented P0 rationale)
+4. **EXECUTE** — Run the single command
+5. **VALIDATE** — Commit count matches, working tree intact
+6. **ROLLBACK** (if validation fails) — Restore from backup immediately
+
+### Covered Commands
+
+- `git filter-repo`, `git filter-branch`
+- `git reset --hard`, `git push --force`
+- `git clean -fd`, `git checkout -- .` (on uncommitted work)
+- `rm -rf` / `del /s` on source directories
+- `docker system prune`, `docker rmi` (production images)
+- Any `--force` flag on shared/remote state
+
+### Rules
+
+- NEVER retry a failed destructive command — restore from backup first
+- NEVER run multiple destructive commands in sequence without verification between each
+- If output shows unexpected counts (e.g., "Parsed 2 commits" on a 100+ commit repo), STOP and restore
+- Backup is removed ONLY after final verification succeeds
+
+### Violation
+
+D025 non-compliance is a CRITICAL protocol breach. Agent is marked NON_COMPLIANT
+and receives no further work until CEO review.
+
+---
 
 ## Escalation Rules
 

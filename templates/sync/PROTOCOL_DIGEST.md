@@ -77,6 +77,25 @@ Claude adds: steps for TREE.yaml rebuild, INDEX.yaml sync, draft validation.
 - If agent contracts conflict with AGENTS.md, AGENTS.md wins
 - Agent contracts contain ONLY role-specific instructions
 
+## Destructive Operations Safeguard (D025)
+
+**Before ANY irreversible command (git filter-repo, git reset --hard, rm -rf, force push, etc.):**
+
+```
+1. BACKUP  — cp -r .git .git-backup-<timestamp> (or archive targets)
+2. VERIFY  — git status clean, record commit count, confirm scope
+3. ESCALATE — CEO approval required (write to inbox/CEO/)
+4. EXECUTE — single command only
+5. VALIDATE — commit count matches, working tree intact
+6. ROLLBACK — if validation fails, restore backup IMMEDIATELY
+```
+
+**Rules:**
+- NEVER retry a failed destructive op — restore backup first
+- NEVER chain multiple destructive commands without verification between each
+- Unexpected output (e.g., "Parsed 2 commits" on 100+ commit repo) → STOP, restore
+- Violation = CRITICAL breach → NON_COMPLIANT, no further work
+
 ## Runtime Version
 
 Check `.sync/RUNTIME_VERSION` for version compatibility.
