@@ -58,7 +58,7 @@ def doctor(project_path: Path) -> bool:
 
     if not sync_path.exists():
         console.print("[bold red][FAIL] No .sync/ directory found[/bold red]")
-        console.print("  This does not appear to be a STACKMIND project.")
+        console.print("  This does not appear to be a stackmind project.")
         console.print("  Run `stackmind init` to create a new runtime.")
         return False
 
@@ -79,7 +79,7 @@ def doctor(project_path: Path) -> bool:
         else:
             console.print(f"  Runtime version: [bold red]ERROR ({err})[/bold red]")
     else:
-        console.print("  Runtime version: [dim]not set (pre-STACKMIND runtime)[/dim]")
+        console.print("  Runtime version: [dim]not set (pre-stackmind runtime)[/dim]")
         runtime_version = "0.0.0"
 
     console.print(f"  CLI version: [bold]{__version__}[/bold]")

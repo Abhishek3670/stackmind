@@ -1,4 +1,4 @@
-"""stackmind init — Initialize a new STACKMIND runtime.
+"""stackmind init — Initialize a new stackmind runtime.
 
 Handles:
 - Template rendering ({{PLACEHOLDER}} substitution)
@@ -252,7 +252,7 @@ def init_git(path: Path, initial_commit: bool = True) -> bool:
                 text=True,
             )
             subprocess.run(
-                ["git", "commit", "-m", "Initial STACKMIND runtime"],
+                ["git", "commit", "-m", "Initial stackmind runtime"],
                 cwd=str(path),
                 capture_output=True,
                 check=True,
@@ -385,7 +385,7 @@ def init(
     agents: Optional[list[str]] = None,
     no_git: bool = False,
 ) -> bool:
-    """Initialize a new STACKMIND runtime at the given path.
+    """Initialize a new stackmind runtime at the given path.
 
     This is the main entry point for `stackmind init`.
 
@@ -413,7 +413,7 @@ def init(
         agents = DEFAULT_AGENTS.copy()
 
     # ── Step 1: Validate ──────────────────────────────────────
-    console.print(f"\n[bold cyan][*] Initializing STACKMIND runtime...[/bold cyan]")
+    console.print(f"\n[bold cyan][*] Initializing stackmind runtime...[/bold cyan]")
     console.print(f"   Path: [dim]{project_path}[/dim]")
     console.print(f"   Name: [dim]{name}[/dim]")
     console.print(f"   Agents: [dim]{', '.join(agents)}[/dim]\n")
@@ -520,7 +520,7 @@ def init(
     # ── Success ───────────────────────────────────────────────
     console.print(
         Panel(
-            f"[bold green][SUCCESS] STACKMIND runtime initialized![/bold green]\n\n"
+            f"[bold green][SUCCESS] stackmind runtime initialized![/bold green]\n\n"
             f"  Project: [bold]{name}[/bold]\n"
             f"  Path:    [dim]{project_path}[/dim]\n"
             f"  Runtime: [dim]{sync_path}[/dim]\n"
@@ -529,7 +529,7 @@ def init(
             f"  1. Review [bold]AGENTS.md[/bold] in project root\n"
             f"  2. Customize agent contracts in [bold].sync/agents/[/bold]\n"
             f"  3. Run [bold]stackmind validate {project_path}[/bold] to verify",
-            title="[bold] STACKMIND [/bold]",
+            title="[bold] stackmind [/bold]",
             border_style="green",
         )
     )

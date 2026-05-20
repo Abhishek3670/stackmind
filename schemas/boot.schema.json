@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "STACKMIND Boot Snapshot",
+  "title": "stackmind Boot Snapshot",
   "type": "object",
   "required": [
     "schema_version",

@@ -1,6 +1,6 @@
 # {{PROJECT_NAME}}
 
-A multi-agent engineering project managed by [STACKMIND](https://github.com/stackmind/stackmind).
+A multi-agent engineering project managed by [stackmind](https://github.com/stackmind/stackmind).
 
 ## Getting Started
 

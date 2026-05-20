@@ -1,4 +1,4 @@
-# Protocol Digest v1 (STACKMIND Runtime)
+# Protocol Digest v1 (stackmind Runtime)
 
 > **Hash-gated.** Agents compare `protocol_digest_hash` in their boot snapshot
 > against `PROTOCOL_DIGEST.hash`. If match → skip this file entirely.

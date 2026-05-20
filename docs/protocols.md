@@ -1,6 +1,6 @@
 # Protocols
 
-STACKMIND enforces a set of protocols that govern agent behavior, runtime operations, and team coordination.
+stackmind enforces a set of protocols that govern agent behavior, runtime operations, and team coordination.
 
 ## Protocol Summary
 

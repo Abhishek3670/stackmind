@@ -19,7 +19,7 @@ pip install stackmind
 
 ## stackmind init
 
-Initialize a new STACKMIND runtime at the specified path.
+Initialize a new stackmind runtime at the specified path.
 
 ### Usage
 
@@ -60,7 +60,7 @@ stackmind init ./my-project --no-git
 ### Output
 
 ```
-✅ STACKMIND runtime initialized at ./my-project
+✅ stackmind runtime initialized at ./my-project
 
 Created:
   - AGENTS.md
@@ -211,7 +211,7 @@ stackmind doctor ./my-project
 
 ```
 ╭─────────────────────────────────────────────────────╮
-│ STACKMIND Runtime Health Report                     │
+│ stackmind Runtime Health Report                     │
 ╰─────────────────────────────────────────────────────╯
 
 Runtime Version Check
@@ -351,6 +351,6 @@ stackmind migrate --help
 
 | Variable | Description |
 |----------|-------------|
-| `STACKMIND_DEBUG` | Enable debug output |
-| `STACKMIND_QUIET` | Suppress non-error output |
-| `STACKMIND_NO_COLOR` | Disable colored output |
+| `stackmind_DEBUG` | Enable debug output |
+| `stackmind_QUIET` | Suppress non-error output |
+| `stackmind_NO_COLOR` | Disable colored output |

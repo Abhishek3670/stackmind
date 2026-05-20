@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "STACKMIND Runtime Version",
+  "title": "stackmind Runtime Version",
   "type": "object",
   "required": [
     "version",

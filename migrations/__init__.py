@@ -1,1 +1,1 @@
-"""STACKMIND runtime migrations."""
+"""stackmind runtime migrations."""

@@ -1,16 +1,15 @@
-# STACKMIND
+# stackmind
 
 > Reusable Multi-Agent Engineering Runtime Platform
 
-**Version:** 0.1.0-alpha  
-**Status:** In Development  
-**Reference Implementation:** AI-CCTV v1.0.0
+**Version:** 1.0.0  
+**Status:** Production Ready
 
 ---
 
 ## Overview
 
-STACKMIND is a reusable runtime platform for multi-agent software engineering teams. It provides:
+stackmind is a reusable runtime platform for multi-agent software engineering teams. It provides:
 
 - **Structured agent coordination** via inbox/outbox messaging
 - **Work order management** for task assignment and tracking
@@ -27,7 +26,7 @@ pip install stackmind
 ## Quick Start
 
 ```bash
-# Initialize a new project with STACKMIND runtime
+# Initialize a new project with stackmind runtime
 stackmind init ./my-project --name "My Project"
 
 # Validate runtime health
@@ -59,7 +58,7 @@ my-project/
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    STACKMIND PLATFORM                       │
+│                    stackmind platform                       │
 ├─────────────────────────────────────────────────────────────┤
 │  Runtime Engine (this package)  │  Runtime Instance (per-project)
 │  ───────────────────────────────────────────────────────────│
@@ -85,7 +84,7 @@ Workers (Codex, Gemini, Local-LLM)
 
 ## Protocol Compliance
 
-STACKMIND enforces:
+stackmind enforces:
 
 - **D021** — Agent boot/resume optimization
 - **D022** — Work order architecture
@@ -105,7 +104,7 @@ STACKMIND enforces:
 
 ```bash
 # Clone repository
-git clone <repo-url> stackmind
+git clone https://github.com/Abhishek3670/stackmind.git
 cd stackmind
 
 # Install in development mode
@@ -121,7 +120,3 @@ stackmind validate .
 ## License
 
 MIT License
-
----
-
-**Extracted from AI-CCTV v1.0.0 runtime architecture.**

@@ -1,1 +1,1 @@
-"""STACKMIND JSON Schemas for runtime validation."""
+"""stackmind JSON Schemas for runtime validation."""

@@ -1,4 +1,4 @@
-"""STACKMIND CLI entry point."""
+"""stackmind CLI entry point."""
 
 from pathlib import Path
 
@@ -10,7 +10,7 @@ from . import __version__
 @click.group()
 @click.version_option(version=__version__, prog_name="stackmind")
 def cli():
-    """STACKMIND — Multi-Agent Engineering Runtime Platform."""
+    """stackmind — Multi-Agent Engineering Runtime Platform."""
     pass
 
 
@@ -25,7 +25,7 @@ def cli():
 )
 @click.option("--no-git", is_flag=True, help="Skip git initialization")
 def init(project_path: str, name: str | None, agents: str | None, no_git: bool):
-    """Initialize a new STACKMIND runtime.
+    """Initialize a new stackmind runtime.
 
     Creates a fresh multi-agent runtime at PROJECT_PATH with all required
     templates, schemas, and directory structure.

@@ -2,11 +2,11 @@
 
 ## Core Concept: Engine vs Instance
 
-STACKMIND separates the reusable infrastructure from project-specific runtime state.
+stackmind separates the reusable infrastructure from project-specific runtime state.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    STACKMIND PLATFORM                       │
+│                    stackmind PLATFORM                       │
 ├─────────────────────────────────────────────────────────────┤
 │  Runtime Engine (this package)  │  Runtime Instance (per-project)  │
 │  ────────────────────────────────────────────────────────────────  │
@@ -20,7 +20,7 @@ STACKMIND separates the reusable infrastructure from project-specific runtime st
 
 ### Runtime Engine
 
-The engine is the STACKMIND package itself. It provides:
+The engine is the stackmind package itself. It provides:
 
 - **CLI commands**: `init`, `validate`, `doctor`, `migrate`
 - **Schemas**: JSON Schema definitions for all YAML files
@@ -30,7 +30,7 @@ The engine is the STACKMIND package itself. It provides:
 
 ### Runtime Instance
 
-Each project using STACKMIND has its own runtime instance at `.sync/`:
+Each project using stackmind has its own runtime instance at `.sync/`:
 
 - **Agent state**: Boot snapshots, session counts, task assignments
 - **Communication**: Inbox messages, outbox reports
@@ -145,7 +145,7 @@ Workers (Codex, Gemini, Local-LLM)
 
 1. All runtime state lives under `.sync/`
 2. `project-root/AGENTS.md` is authoritative
-3. STACKMIND never assumes any specific project
+3. stackmind never assumes any specific project
 4. Templates contain zero operational history
 5. Only Claude writes to `TREE.yaml` and `runtime/boot/`
 6. Workers write drafts to `runtime/drafts/`, never to `runtime/boot/`

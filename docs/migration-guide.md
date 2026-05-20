@@ -1,10 +1,10 @@
 # Migration Guide
 
-This guide covers upgrading STACKMIND runtimes between versions, handling breaking changes, and rollback procedures.
+This guide covers upgrading stackmind runtimes between versions, handling breaking changes, and rollback procedures.
 
 ## Version Management
 
-STACKMIND follows [Semantic Versioning 2.0.0](https://semver.org/):
+stackmind follows [Semantic Versioning 2.0.0](https://semver.org/):
 
 ```
 MAJOR.MINOR.PATCH
@@ -136,7 +136,7 @@ Before any v2.0.0 release:
 
 ### Automatic Rollback
 
-If a migration fails, STACKMIND automatically rolls back:
+If a migration fails, stackmind automatically rolls back:
 
 ```bash
 stackmind migrate ./my-project
@@ -349,7 +349,7 @@ git checkout <commit-hash> -- .
 
 ## Migration Registry
 
-Available migrations are tracked in the STACKMIND package:
+Available migrations are tracked in the stackmind package:
 
 ```python
 # stackmind/migrations/registry.py

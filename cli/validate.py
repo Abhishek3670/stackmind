@@ -435,7 +435,7 @@ def auto_fix(sync_path: Path, issues: list[Issue]) -> int:
 
 
 def validate(project_path: Path, fix: bool = False) -> ValidationResult:
-    """Run full validation on a STACKMIND runtime.
+    """Run full validation on a stackmind runtime.
 
     Args:
         project_path: Root of the project containing .sync/.
@@ -453,7 +453,7 @@ def validate(project_path: Path, fix: bool = False) -> ValidationResult:
         result.issues.append(Issue(
             layer="Structure",
             severity=Severity.ERROR,
-            message="No .sync/ directory found — not a STACKMIND runtime",
+            message="No .sync/ directory found — not a stackmind runtime",
             path=".sync",
         ))
         return result

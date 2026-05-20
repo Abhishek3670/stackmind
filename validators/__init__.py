@@ -1,1 +1,1 @@
-"""STACKMIND runtime validators."""
+"""stackmind runtime validators."""

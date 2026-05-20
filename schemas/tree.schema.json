@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "STACKMIND TREE.yaml",
+  "title": "stackmind TREE.yaml",
   "type": "object",
   "required": [
     "schema_version",

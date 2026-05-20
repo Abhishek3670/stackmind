@@ -1,6 +1,6 @@
-# Minimal STACKMIND Example
+# Minimal stackmind Example
 
-This is a minimal example of a STACKMIND runtime instance.
+This is a minimal example of a stackmind runtime instance.
 
 ## Structure
 
