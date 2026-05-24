@@ -475,6 +475,30 @@ def validate_boot_integrity(sync_path: Path, agents: list[str], result: Validati
                 path=f"runtime/boot/{agent}.boot.yaml",
             ))
 
+        # graph_version alignment
+        tree_graph_version = tree_data.get("graph_version")
+        boot_graph_version = boot_data.get("graph_version")
+        if boot_graph_version is not None:
+            if tree_graph_version is None:
+                result.issues.append(Issue(
+                    layer="Boot Integrity",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"{agent}.boot.yaml has graph_version but TREE.yaml graph_version is null"
+                    ),
+                    path=f"runtime/boot/{agent}.boot.yaml",
+                ))
+            elif boot_graph_version != tree_graph_version:
+                result.issues.append(Issue(
+                    layer="Boot Integrity",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"{agent}.boot.yaml graph_version mismatch "
+                        f"(boot={boot_graph_version[:16]}... tree={tree_graph_version[:16]}...)"
+                    ),
+                    path=f"runtime/boot/{agent}.boot.yaml",
+                ))
+
 
 # ─── Auto-fix ────────────────────────────────────────────────────
 

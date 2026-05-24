@@ -382,3 +382,74 @@ class TestBlockedAgentValidation:
         result = validate(fresh_project)
         blocked_issues = [i for i in result.issues if "empty blockers" in i.message]
         assert len(blocked_issues) == 0
+
+
+# ─── Graph Version Validation Tests ─────────────────────────────
+
+
+class TestGraphVersionValidation:
+    """Tests for graph_version alignment between boot and TREE."""
+
+    def test_fresh_runtime_with_null_graph_version_passes(self, fresh_project, sync_path):
+        """Fresh runtime with null graph_version should pass."""
+        result = validate(fresh_project)
+        graph_issues = [i for i in result.issues if "graph_version" in i.message]
+        assert len(graph_issues) == 0
+
+    def test_boot_graph_version_with_null_tree_is_error(self, fresh_project, sync_path):
+        """Boot with graph_version when TREE has null should be ERROR."""
+        boot = sync_path / "runtime" / "boot" / "claude.boot.yaml"
+        data = yaml.safe_load(boot.read_text(encoding="utf-8"))
+        data["graph_version"] = "A" * 64
+        boot.write_text(yaml.dump(data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        graph_issues = [i for i in result.issues if "graph_version" in i.message and "null" in i.message]
+        assert len(graph_issues) == 1
+        assert graph_issues[0].severity == Severity.ERROR
+
+    def test_matching_graph_versions_passes(self, fresh_project, sync_path):
+        """Matching graph_version in boot and TREE should pass."""
+        graph_hash = "B" * 64
+
+        tree = sync_path / "runtime" / "TREE.yaml"
+        tree_data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        tree_data["graph_version"] = graph_hash
+        tree.write_text(yaml.dump(tree_data), encoding="utf-8")
+
+        boot = sync_path / "runtime" / "boot" / "claude.boot.yaml"
+        boot_data = yaml.safe_load(boot.read_text(encoding="utf-8"))
+        boot_data["graph_version"] = graph_hash
+        boot.write_text(yaml.dump(boot_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        graph_issues = [i for i in result.issues if "graph_version" in i.message]
+        assert len(graph_issues) == 0
+
+    def test_mismatched_graph_versions_is_error(self, fresh_project, sync_path):
+        """Mismatched graph_version between boot and TREE should be ERROR."""
+        tree = sync_path / "runtime" / "TREE.yaml"
+        tree_data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        tree_data["graph_version"] = "C" * 64
+        tree.write_text(yaml.dump(tree_data), encoding="utf-8")
+
+        boot = sync_path / "runtime" / "boot" / "claude.boot.yaml"
+        boot_data = yaml.safe_load(boot.read_text(encoding="utf-8"))
+        boot_data["graph_version"] = "D" * 64
+        boot.write_text(yaml.dump(boot_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        graph_issues = [i for i in result.issues if "graph_version mismatch" in i.message]
+        assert len(graph_issues) == 1
+        assert graph_issues[0].severity == Severity.ERROR
+
+    def test_tree_graph_version_with_null_boot_passes(self, fresh_project, sync_path):
+        """TREE with graph_version but boot with null should pass (boot hasn't synced yet)."""
+        tree = sync_path / "runtime" / "TREE.yaml"
+        tree_data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        tree_data["graph_version"] = "E" * 64
+        tree.write_text(yaml.dump(tree_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        graph_issues = [i for i in result.issues if "graph_version" in i.message]
+        assert len(graph_issues) == 0

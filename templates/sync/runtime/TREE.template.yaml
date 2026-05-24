@@ -1,5 +1,6 @@
 schema_version: 1
 tree_version: 1
+graph_version: null
 last_updated: "{{INIT_TIMESTAMP}}"
 
 current_phase: "INIT"
