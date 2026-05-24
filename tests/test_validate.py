@@ -253,3 +253,31 @@ class TestAutoFix:
         (fresh_project / "AGENTS.md").unlink()
         result = validate(fresh_project, fix=True)
         assert not result.passed
+
+    def test_missing_read_dir_is_error(self, fresh_project, sync_path):
+        """Missing _read/ folder should be ERROR, not WARN."""
+        shutil.rmtree(sync_path / "inbox" / "codex" / "_read")
+
+        result = validate(fresh_project, fix=False)
+        read_issues = [i for i in result.issues if "_read" in i.message]
+        assert len(read_issues) == 1
+        assert read_issues[0].severity == Severity.ERROR
+        assert read_issues[0].auto_fixable is True
+
+    def test_missing_ceo_read_dir_is_error(self, fresh_project, sync_path):
+        """Missing CEO inbox _read/ folder should be ERROR."""
+        shutil.rmtree(sync_path / "inbox" / "CEO" / "_read")
+
+        result = validate(fresh_project, fix=False)
+        ceo_read_issues = [i for i in result.issues if "CEO/_read" in i.message]
+        assert len(ceo_read_issues) == 1
+        assert ceo_read_issues[0].severity == Severity.ERROR
+        assert ceo_read_issues[0].auto_fixable is True
+
+    def test_fix_missing_ceo_read_dir(self, fresh_project, sync_path):
+        """Auto-fix should create missing CEO inbox _read/ folder."""
+        shutil.rmtree(sync_path / "inbox" / "CEO" / "_read")
+
+        result = validate(fresh_project, fix=True)
+        assert (sync_path / "inbox" / "CEO" / "_read").exists()
+        assert (sync_path / "inbox" / "CEO" / "_read" / ".gitkeep").exists()

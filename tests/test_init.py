@@ -191,8 +191,10 @@ class TestInit:
             outbox = tmp_project / ".sync" / "outbox" / agent
             assert outbox.is_dir()
 
-        # CEO inbox
-        assert (tmp_project / ".sync" / "inbox" / "CEO").is_dir()
+        # CEO inbox with _read/ folder
+        ceo_inbox = tmp_project / ".sync" / "inbox" / "CEO"
+        assert ceo_inbox.is_dir()
+        assert (ceo_inbox / "_read").is_dir()
 
     def test_creates_work_order_structure(self, tmp_project):
         """Work order directories and INDEX.yaml must exist."""

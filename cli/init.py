@@ -211,6 +211,9 @@ def _create_empty_dirs(sync_path: Path, agents: list[str]) -> None:
     ceo_dir = sync_path / "inbox" / "CEO"
     ceo_dir.mkdir(parents=True, exist_ok=True)
     (ceo_dir / ".gitkeep").write_text("", encoding="utf-8")
+    ceo_read_dir = ceo_dir / "_read"
+    ceo_read_dir.mkdir(parents=True, exist_ok=True)
+    (ceo_read_dir / ".gitkeep").write_text("", encoding="utf-8")
 
     # Agent outbox directories
     for agent in agents:
@@ -345,6 +348,7 @@ def validate_result(project_path: Path, agents: list[str]) -> list[str]:
         "work-orders/BLOCKED",
         "work-orders/TEMPLATES",
         "inbox/CEO",
+        "inbox/CEO/_read",
     ]
 
     for d in required_dirs:

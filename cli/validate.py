@@ -219,6 +219,17 @@ def validate_structure(project_path: Path, sync_path: Path, agents: list[str], r
                     auto_fixable=True,
                 ))
 
+    # CEO inbox _read/ folder
+    ceo_read_dir = sync_path / "inbox" / "CEO" / "_read"
+    if not ceo_read_dir.is_dir():
+        result.issues.append(Issue(
+            layer="Structure",
+            severity=Severity.ERROR,
+            message="Missing: .sync/inbox/CEO/_read/",
+            path="inbox/CEO/_read",
+            auto_fixable=True,
+        ))
+
     for agent in agents:
         boot_file = sync_path / "runtime" / "boot" / f"{agent}.boot.yaml"
         if not boot_file.exists():
@@ -251,7 +262,7 @@ def validate_structure(project_path: Path, sync_path: Path, agents: list[str], r
             if not read_dir.is_dir():
                 result.issues.append(Issue(
                     layer="Structure",
-                    severity=Severity.WARN,
+                    severity=Severity.ERROR,
                     message=f"Missing: .sync/inbox/{agent}/_read/",
                     path=f"inbox/{agent}/_read",
                     auto_fixable=True,
