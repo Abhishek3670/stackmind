@@ -453,3 +453,126 @@ class TestGraphVersionValidation:
         result = validate(fresh_project)
         graph_issues = [i for i in result.issues if "graph_version" in i.message]
         assert len(graph_issues) == 0
+
+
+# ─── Work Order Deliverable Validation Tests ────────────────────
+
+
+class TestWorkOrderDeliverableValidation:
+    """Tests for work order deliverable requirement."""
+
+    def test_feature_without_deliverable_is_error(self, fresh_project, sync_path):
+        """FEATURE work order without deliverable should be ERROR."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "FEATURE",
+            "title": "Test Feature",
+            "status": "ACTIVE",
+            "priority": "P1",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml"
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        deliverable_issues = [i for i in result.issues if "deliverable" in i.message]
+        assert len(deliverable_issues) == 1
+        assert deliverable_issues[0].severity == Severity.ERROR
+
+    def test_feature_with_deliverable_passes(self, fresh_project, sync_path):
+        """FEATURE work order with deliverable should pass."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "FEATURE",
+            "title": "Test Feature",
+            "status": "ACTIVE",
+            "priority": "P1",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml",
+            "deliverable": {
+                "type": "code",
+                "path": "src/feature.py",
+                "description": "New feature implementation"
+            }
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        deliverable_issues = [i for i in result.issues if "deliverable" in i.message]
+        assert len(deliverable_issues) == 0
+
+    def test_research_without_deliverable_passes(self, fresh_project, sync_path):
+        """RESEARCH work order without deliverable should pass (not required)."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "RESEARCH",
+            "title": "Test Research",
+            "status": "ACTIVE",
+            "priority": "P2",
+            "assigned_agents": ["claude"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml"
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        deliverable_issues = [i for i in result.issues if "deliverable" in i.message]
+        assert len(deliverable_issues) == 0
+
+    def test_bugfix_without_deliverable_is_error(self, fresh_project, sync_path):
+        """BUGFIX work order without deliverable should be ERROR."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "BUGFIX",
+            "title": "Fix bug",
+            "status": "ACTIVE",
+            "priority": "P0",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml"
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        deliverable_issues = [i for i in result.issues if "deliverable" in i.message]
+        assert len(deliverable_issues) == 1
+
+    def test_phase_without_deliverable_passes(self, fresh_project, sync_path):
+        """PHASE work order without deliverable should pass (not required)."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "PHASE",
+            "title": "Phase 1",
+            "status": "ACTIVE",
+            "priority": "P1",
+            "assigned_agents": ["claude"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml"
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        deliverable_issues = [i for i in result.issues if "deliverable" in i.message]
+        assert len(deliverable_issues) == 0

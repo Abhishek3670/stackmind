@@ -60,6 +60,30 @@
         "type": "string"
       }
     },
+    "deliverable": {
+      "type": "object",
+      "required": [
+        "type",
+        "description"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "code",
+            "doc",
+            "config"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "plan_ref": {
       "type": "string"
     },
@@ -189,5 +213,5 @@
       }
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

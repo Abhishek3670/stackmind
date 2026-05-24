@@ -405,6 +405,37 @@ def _validate_blocked_agents(sync_path: Path, tree_data: dict, result: Validatio
                             path="runtime/TREE.yaml",
                         ))
 
+    # Validate work order deliverables
+    _validate_work_order_deliverables(sync_path, result)
+
+
+# Work order types that require a deliverable
+DELIVERABLE_REQUIRED_TYPES = {"FEATURE", "BUGFIX", "HOTFIX", "REFACTOR", "FIX"}
+
+
+def _validate_work_order_deliverables(sync_path: Path, result: ValidationResult) -> None:
+    """Validate that work orders requiring deliverables have them."""
+    index_path = sync_path / "work-orders" / "INDEX.yaml"
+    if not index_path.exists():
+        return
+
+    index_data, _ = _load_yaml(index_path)
+    if not index_data or "orders" not in index_data:
+        return
+
+    for order in index_data["orders"]:
+        wo_id = order.get("id", "unknown")
+        wo_type = order.get("type")
+        deliverable = order.get("deliverable")
+
+        if wo_type in DELIVERABLE_REQUIRED_TYPES and not deliverable:
+            result.issues.append(Issue(
+                layer="Protocol",
+                severity=Severity.ERROR,
+                message=f"Work order '{wo_id}' (type={wo_type}) requires a deliverable field",
+                path="work-orders/INDEX.yaml",
+            ))
+
 
 # ─── Layer 4: Boot Integrity ────────────────────────────────────
 
