@@ -9,6 +9,7 @@ Implements four validation layers per D030 §7:
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -340,6 +341,69 @@ def validate_protocol(sync_path: Path, agents: list[str], result: ValidationResu
                         message=f"Agent '{agent}' has boot snapshot but missing from TREE.yaml agents",
                         path="runtime/TREE.yaml",
                     ))
+
+    # Validate blocked agents have non-empty blockers with valid references
+    _validate_blocked_agents(sync_path, data, result)
+
+
+# Work order ID pattern
+WO_PATTERN = re.compile(r"^WO-\d{3}$")
+
+
+def _validate_blocked_agents(sync_path: Path, tree_data: dict, result: ValidationResult) -> None:
+    """Validate that blocked agents have valid blocker references."""
+    if not tree_data:
+        return
+
+    tree_agents = tree_data.get("agents", {})
+    agent_names = set(tree_agents.keys())
+
+    # Load work order IDs from INDEX.yaml
+    index_path = sync_path / "work-orders" / "INDEX.yaml"
+    wo_ids: set[str] = set()
+    if index_path.exists():
+        index_data, _ = _load_yaml(index_path)
+        if index_data and "orders" in index_data:
+            wo_ids = {order["id"] for order in index_data["orders"] if "id" in order}
+
+    for agent_name, agent_data in tree_agents.items():
+        if not isinstance(agent_data, dict):
+            continue
+
+        status = agent_data.get("status")
+        blockers = agent_data.get("blockers", [])
+
+        if status == "blocked":
+            # Blocked agents must have non-empty blockers
+            if not blockers:
+                result.issues.append(Issue(
+                    layer="Protocol",
+                    severity=Severity.ERROR,
+                    message=f"Agent '{agent_name}' has status 'blocked' but empty blockers list",
+                    path="runtime/TREE.yaml",
+                ))
+                continue
+
+            # Validate each blocker reference
+            for blocker in blockers:
+                if WO_PATTERN.match(blocker):
+                    # It's a work order reference
+                    if blocker not in wo_ids:
+                        result.issues.append(Issue(
+                            layer="Protocol",
+                            severity=Severity.ERROR,
+                            message=f"Agent '{agent_name}' blocked by non-existent work order '{blocker}'",
+                            path="runtime/TREE.yaml",
+                        ))
+                else:
+                    # It's an agent reference
+                    if blocker not in agent_names:
+                        result.issues.append(Issue(
+                            layer="Protocol",
+                            severity=Severity.ERROR,
+                            message=f"Agent '{agent_name}' blocked by non-existent agent '{blocker}'",
+                            path="runtime/TREE.yaml",
+                        ))
 
 
 # ─── Layer 4: Boot Integrity ────────────────────────────────────

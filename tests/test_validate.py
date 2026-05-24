@@ -281,3 +281,104 @@ class TestAutoFix:
         result = validate(fresh_project, fix=True)
         assert (sync_path / "inbox" / "CEO" / "_read").exists()
         assert (sync_path / "inbox" / "CEO" / "_read" / ".gitkeep").exists()
+
+
+
+# ─── Blocked Agent Validation Tests ─────────────────────────────
+
+
+class TestBlockedAgentValidation:
+    """Tests for blocked agent validation."""
+
+    def test_blocked_agent_with_empty_blockers_is_error(self, fresh_project, sync_path):
+        """Blocked agent with empty blockers list should be ERROR."""
+        tree = sync_path / "runtime" / "TREE.yaml"
+        data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        data["agents"]["claude"]["status"] = "blocked"
+        data["agents"]["claude"]["blockers"] = []
+        tree.write_text(yaml.dump(data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        blocked_issues = [i for i in result.issues if "empty blockers" in i.message]
+        assert len(blocked_issues) == 1
+        assert blocked_issues[0].severity == Severity.ERROR
+
+    def test_blocked_agent_with_valid_wo_blocker_passes(self, fresh_project, sync_path):
+        """Blocked agent with valid WO blocker should pass."""
+        # Add a work order to INDEX.yaml
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "FEATURE",
+            "title": "Test WO",
+            "status": "ACTIVE",
+            "priority": "P1",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml"
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        # Set claude as blocked by WO-001
+        tree = sync_path / "runtime" / "TREE.yaml"
+        data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        data["agents"]["claude"]["status"] = "blocked"
+        data["agents"]["claude"]["blockers"] = ["WO-001"]
+        tree.write_text(yaml.dump(data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        blocked_issues = [i for i in result.issues if "blocked" in i.message.lower() and "claude" in i.message]
+        assert len(blocked_issues) == 0
+
+    def test_blocked_agent_with_valid_agent_blocker_passes(self, fresh_project, sync_path):
+        """Blocked agent with valid agent blocker should pass."""
+        tree = sync_path / "runtime" / "TREE.yaml"
+        data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        data["agents"]["claude"]["status"] = "blocked"
+        data["agents"]["claude"]["blockers"] = ["codex"]
+        tree.write_text(yaml.dump(data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        blocked_issues = [i for i in result.issues if "blocked" in i.message.lower() and "claude" in i.message]
+        assert len(blocked_issues) == 0
+
+    def test_blocked_agent_with_nonexistent_wo_is_error(self, fresh_project, sync_path):
+        """Blocked agent referencing non-existent WO should be ERROR."""
+        tree = sync_path / "runtime" / "TREE.yaml"
+        data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        data["agents"]["claude"]["status"] = "blocked"
+        data["agents"]["claude"]["blockers"] = ["WO-999"]
+        tree.write_text(yaml.dump(data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        wo_issues = [i for i in result.issues if "non-existent work order" in i.message]
+        assert len(wo_issues) == 1
+        assert wo_issues[0].severity == Severity.ERROR
+
+    def test_blocked_agent_with_nonexistent_agent_is_error(self, fresh_project, sync_path):
+        """Blocked agent referencing non-existent agent should be ERROR."""
+        tree = sync_path / "runtime" / "TREE.yaml"
+        data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        data["agents"]["claude"]["status"] = "blocked"
+        data["agents"]["claude"]["blockers"] = ["nonexistent-agent"]
+        tree.write_text(yaml.dump(data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        agent_issues = [i for i in result.issues if "non-existent agent" in i.message]
+        assert len(agent_issues) == 1
+        assert agent_issues[0].severity == Severity.ERROR
+
+    def test_idle_agent_with_empty_blockers_passes(self, fresh_project, sync_path):
+        """Idle agent with empty blockers should pass (only blocked status requires blockers)."""
+        tree = sync_path / "runtime" / "TREE.yaml"
+        data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        data["agents"]["claude"]["status"] = "idle"
+        data["agents"]["claude"]["blockers"] = []
+        tree.write_text(yaml.dump(data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        blocked_issues = [i for i in result.issues if "empty blockers" in i.message]
+        assert len(blocked_issues) == 0
