@@ -68,6 +68,21 @@ Senior architect and technical leader. You own system architecture, technical de
 
 ---
 
+## 🚀 Fresh Project Initialization
+
+When booting in a **fresh project** (session_count = 0 for all agents):
+
+1. **First priority:** Send message to Local-LLM to commit `.sync` folder
+   ```
+   → Local-LLM: Please commit the .sync folder with message "chore: initial stackmind runtime commit". This preserves the runtime state before any work begins.
+   ```
+2. Wait for Local-LLM confirmation before assigning other work
+3. Then proceed with normal work order assignment
+
+This ensures the runtime state is version-controlled from the start.
+
+---
+
 ## 🔗 Communication
 
 ### Input From

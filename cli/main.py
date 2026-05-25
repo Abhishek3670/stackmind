@@ -145,8 +145,60 @@ def doctor(project_path: str):
 @click.option("--check", is_flag=True, help="Check pending migrations only")
 @click.option("--rollback", is_flag=True, help="Rollback last migration")
 def migrate(project_path: str, target_version: str | None, check: bool, rollback: bool):
-    """Migrate runtime to new version."""
-    click.echo(f"stackmind migrate {project_path} — Not yet implemented (WO-016)")
+    """Migrate runtime to new version.
+
+    Applies pending migrations to bring the runtime up to date.
+    Migrations are defined as YAML manifests in the migrations/ directory.
+
+    Examples:
+
+        stackmind migrate
+
+        stackmind migrate ./my-project
+
+        stackmind migrate --check
+
+        stackmind migrate --rollback
+    """
+    from .migrate import migrate as run_migrate
+
+    success = run_migrate(
+        project_path=Path(project_path),
+        target_version=target_version,
+        check=check,
+        rollback=rollback,
+    )
+    if not success:
+        raise SystemExit(1)
+
+
+@cli.command()
+@click.argument("agent", type=str)
+@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
+@click.option("--force", is_flag=True, help="Skip handoff validation (not recommended)")
+def shutdown(agent: str, project_path: str, force: bool):
+    """Shutdown an agent session with handoff validation.
+
+    Validates that the agent has written a handoff report before
+    allowing shutdown. Updates TREE.yaml status and archives the session.
+
+    Examples:
+
+        stackmind shutdown claude
+
+        stackmind shutdown codex --project ./my-project
+
+        stackmind shutdown gemini --force
+    """
+    from .shutdown import shutdown as run_shutdown
+
+    success = run_shutdown(
+        project_path=Path(project_path),
+        agent=agent,
+        force=force,
+    )
+    if not success:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

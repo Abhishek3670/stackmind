@@ -16,6 +16,17 @@
       "type": "integer",
       "minimum": 1
     },
+    "graph_version": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        }
+      ]
+    },
     "last_updated": {
       "oneOf": [
         {

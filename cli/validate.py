@@ -9,6 +9,7 @@ Implements four validation layers per D030 §7:
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -219,6 +220,17 @@ def validate_structure(project_path: Path, sync_path: Path, agents: list[str], r
                     auto_fixable=True,
                 ))
 
+    # CEO inbox _read/ folder
+    ceo_read_dir = sync_path / "inbox" / "CEO" / "_read"
+    if not ceo_read_dir.is_dir():
+        result.issues.append(Issue(
+            layer="Structure",
+            severity=Severity.ERROR,
+            message="Missing: .sync/inbox/CEO/_read/",
+            path="inbox/CEO/_read",
+            auto_fixable=True,
+        ))
+
     for agent in agents:
         boot_file = sync_path / "runtime" / "boot" / f"{agent}.boot.yaml"
         if not boot_file.exists():
@@ -251,7 +263,7 @@ def validate_structure(project_path: Path, sync_path: Path, agents: list[str], r
             if not read_dir.is_dir():
                 result.issues.append(Issue(
                     layer="Structure",
-                    severity=Severity.WARN,
+                    severity=Severity.ERROR,
                     message=f"Missing: .sync/inbox/{agent}/_read/",
                     path=f"inbox/{agent}/_read",
                     auto_fixable=True,
@@ -330,6 +342,100 @@ def validate_protocol(sync_path: Path, agents: list[str], result: ValidationResu
                         path="runtime/TREE.yaml",
                     ))
 
+    # Validate blocked agents have non-empty blockers with valid references
+    _validate_blocked_agents(sync_path, data, result)
+
+
+# Work order ID pattern
+WO_PATTERN = re.compile(r"^WO-\d{3}$")
+
+
+def _validate_blocked_agents(sync_path: Path, tree_data: dict, result: ValidationResult) -> None:
+    """Validate that blocked agents have valid blocker references."""
+    if not tree_data:
+        return
+
+    tree_agents = tree_data.get("agents", {})
+    agent_names = set(tree_agents.keys())
+
+    # Load work order IDs from INDEX.yaml
+    index_path = sync_path / "work-orders" / "INDEX.yaml"
+    wo_ids: set[str] = set()
+    if index_path.exists():
+        index_data, _ = _load_yaml(index_path)
+        if index_data and "orders" in index_data:
+            wo_ids = {order["id"] for order in index_data["orders"] if "id" in order}
+
+    for agent_name, agent_data in tree_agents.items():
+        if not isinstance(agent_data, dict):
+            continue
+
+        status = agent_data.get("status")
+        blockers = agent_data.get("blockers", [])
+
+        if status == "blocked":
+            # Blocked agents must have non-empty blockers
+            if not blockers:
+                result.issues.append(Issue(
+                    layer="Protocol",
+                    severity=Severity.ERROR,
+                    message=f"Agent '{agent_name}' has status 'blocked' but empty blockers list",
+                    path="runtime/TREE.yaml",
+                ))
+                continue
+
+            # Validate each blocker reference
+            for blocker in blockers:
+                if WO_PATTERN.match(blocker):
+                    # It's a work order reference
+                    if blocker not in wo_ids:
+                        result.issues.append(Issue(
+                            layer="Protocol",
+                            severity=Severity.ERROR,
+                            message=f"Agent '{agent_name}' blocked by non-existent work order '{blocker}'",
+                            path="runtime/TREE.yaml",
+                        ))
+                else:
+                    # It's an agent reference
+                    if blocker not in agent_names:
+                        result.issues.append(Issue(
+                            layer="Protocol",
+                            severity=Severity.ERROR,
+                            message=f"Agent '{agent_name}' blocked by non-existent agent '{blocker}'",
+                            path="runtime/TREE.yaml",
+                        ))
+
+    # Validate work order deliverables
+    _validate_work_order_deliverables(sync_path, result)
+
+
+# Work order types that require a deliverable
+DELIVERABLE_REQUIRED_TYPES = {"FEATURE", "BUGFIX", "HOTFIX", "REFACTOR", "FIX"}
+
+
+def _validate_work_order_deliverables(sync_path: Path, result: ValidationResult) -> None:
+    """Validate that work orders requiring deliverables have them."""
+    index_path = sync_path / "work-orders" / "INDEX.yaml"
+    if not index_path.exists():
+        return
+
+    index_data, _ = _load_yaml(index_path)
+    if not index_data or "orders" not in index_data:
+        return
+
+    for order in index_data["orders"]:
+        wo_id = order.get("id", "unknown")
+        wo_type = order.get("type")
+        deliverable = order.get("deliverable")
+
+        if wo_type in DELIVERABLE_REQUIRED_TYPES and not deliverable:
+            result.issues.append(Issue(
+                layer="Protocol",
+                severity=Severity.ERROR,
+                message=f"Work order '{wo_id}' (type={wo_type}) requires a deliverable field",
+                path="work-orders/INDEX.yaml",
+            ))
+
 
 # ─── Layer 4: Boot Integrity ────────────────────────────────────
 
@@ -399,6 +505,30 @@ def validate_boot_integrity(sync_path: Path, agents: list[str], result: Validati
                 message=f"{agent}.boot.yaml has negative session_count: {session_count}",
                 path=f"runtime/boot/{agent}.boot.yaml",
             ))
+
+        # graph_version alignment
+        tree_graph_version = tree_data.get("graph_version")
+        boot_graph_version = boot_data.get("graph_version")
+        if boot_graph_version is not None:
+            if tree_graph_version is None:
+                result.issues.append(Issue(
+                    layer="Boot Integrity",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"{agent}.boot.yaml has graph_version but TREE.yaml graph_version is null"
+                    ),
+                    path=f"runtime/boot/{agent}.boot.yaml",
+                ))
+            elif boot_graph_version != tree_graph_version:
+                result.issues.append(Issue(
+                    layer="Boot Integrity",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"{agent}.boot.yaml graph_version mismatch "
+                        f"(boot={boot_graph_version[:16]}... tree={tree_graph_version[:16]}...)"
+                    ),
+                    path=f"runtime/boot/{agent}.boot.yaml",
+                ))
 
 
 # ─── Auto-fix ────────────────────────────────────────────────────
