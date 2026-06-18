@@ -242,7 +242,7 @@ stackmind doctor ./my-project
 Runtime Version Check
 ─────────────────────
 Runtime version: 1.0.0
-CLI version: 1.1.0
+CLI version: 1.2.0
 Compatibility: ✅ COMPATIBLE
 
 Schema Version Check
@@ -492,7 +492,7 @@ stackmind --version
 ```
 Output:
 ```
-stackmind, version 1.1.0
+stackmind, version 1.2.0
 ```
 
 ## Help

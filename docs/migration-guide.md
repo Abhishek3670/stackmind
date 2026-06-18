@@ -244,6 +244,38 @@ Manual steps:
 3. Update `RUNTIME_VERSION`
 4. Run `stackmind validate`
 
+### Example 5: Normalizing Drifted Data (v1.1.0 → v1.2.0)
+
+Long-running runtimes can accumulate field values that were never schema-valid
+(e.g. agents writing free-form `phase_status` like
+`RELEASED_DEPLOYED_HEALTHY (v1.0.5 ...)` instead of a lifecycle enum value).
+The `1.1.0 → 1.2.0` migration repairs this automatically using the
+`normalize_enum_field` action:
+
+```yaml
+up:
+  - action: normalize_enum_field
+    glob: "runtime/boot/*.yaml"        # apply to every boot snapshot
+    field: phase_status
+    allowed: [INIT, PLANNING, ACTIVE, COMPLETE, BLOCKED]
+    mapping:
+      RELEASED: COMPLETE               # substring → enum value
+      DEPLOYED: COMPLETE
+    fallback: COMPLETE                 # used when no mapping matches
+    preserve_to: phase_status_detail   # original text kept here (lossless)
+```
+
+- Values already in `allowed` are left untouched.
+- Non-conforming values are mapped to the enum and the **original string is
+  preserved** in `preserve_to`, so no information is lost.
+- The migration is reversible: its `down` uses `restore_field` to copy the
+  preserved value back and drop the detail field.
+
+```bash
+stackmind migrate ./my-project        # 1.0.0 → 1.1.0 → 1.2.0
+stackmind validate ./my-project       # now clean
+```
+
 ## Compatibility Validation
 
 ### stackmind doctor Output
