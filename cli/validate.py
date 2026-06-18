@@ -364,53 +364,54 @@ WO_REF_PATTERN = re.compile(r"WO-\d{3}")
 
 
 def _iter_review_files(sync_path: Path):
-    """Yield review-request files, skipping processed (_read/) items.
+    """Yield D024 review-*request* files, skipping processed (_read/) items.
 
-    Review files are discovered in two canonical locations:
-      * the dedicated ``reviews/`` directory (any ``.md``), and
-      * inbox messages whose filename marks them as reviews
-        (``*review*.md``), per D024's ``<date>_<agent>_<wo-id>-review.md``.
+    Only true review-request files are considered — those whose name follows
+    the D024 convention ``<date>_<agent>_<wo-id>-review.md`` (i.e. the name
+    ends in ``-review.md``). This deliberately excludes related-but-different
+    artifacts that merely contain the word "review" in their name, such as
+    review *plans* (``...-review-plan.md``) or QA *verdicts*
+    (``...-verdict.md``), which legitimately reference several work orders.
+
+    Files are discovered under the dedicated ``reviews/`` directory and inside
+    reviewer inboxes (``inbox/.../``).
     """
-    reviews_dir = sync_path / "reviews"
-    if reviews_dir.is_dir():
-        for path in reviews_dir.rglob("*.md"):
+    seen = set()
+    for base in (sync_path / "reviews", sync_path / "inbox"):
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*.md"):
             if "_read" in path.parts:
                 continue
-            yield path
-
-    inbox_dir = sync_path / "inbox"
-    if inbox_dir.is_dir():
-        for path in inbox_dir.rglob("*.md"):
-            if "_read" in path.parts:
+            if not path.name.lower().endswith("-review.md"):
                 continue
-            if "review" not in path.name.lower():
+            if path in seen:
                 continue
+            seen.add(path)
             yield path
 
 
 def _validate_review_files(sync_path: Path, result: ValidationResult) -> None:
-    """Flag review files that reference more than one work order (GEMINI-03).
+    """Flag review-request files that name more than one work order (GEMINI-03).
 
-    D024 requires exactly one review request file per work order. Bundling
-    multiple work orders into a single review file makes partial
-    approval/rejection impossible and breaks per-WO auditability, so a review
-    file referencing two or more distinct WO IDs is a protocol violation
-    (ERROR). The filename and file contents are scanned together.
+    D024 requires exactly one review request file per work order. The work
+    order a request covers is encoded in its **filename**
+    (``<wo-id>-review.md``); a request filed under two or more distinct WO IDs
+    breaks per-WO auditability and is a protocol violation (ERROR).
+
+    Only the filename is inspected — not the body — because a review request
+    legitimately references related work orders (dependencies, prior reviews)
+    in its prose, and scanning content produces false positives.
     """
     for review_path in _iter_review_files(sync_path):
-        try:
-            content = review_path.read_text(encoding="utf-8")
-        except OSError:
-            content = ""
-
-        wo_ids = sorted(set(WO_REF_PATTERN.findall(review_path.name + "\n" + content)))
+        wo_ids = sorted(set(WO_REF_PATTERN.findall(review_path.name)))
         if len(wo_ids) > 1:
             rel = review_path.relative_to(sync_path).as_posix()
             result.issues.append(Issue(
                 layer="Protocol",
                 severity=Severity.ERROR,
                 message=(
-                    f"Review file references multiple work orders "
+                    f"Review request names multiple work orders "
                     f"({', '.join(wo_ids)}): {rel} "
                     f"— D024 requires one review file per work order (GEMINI-03)"
                 ),
@@ -427,17 +428,28 @@ _RELEASE_TARGET_PLACEHOLDERS = {"", "tbd", "none", "null", "n/a", "-"}
 def _iter_completion_notices(sync_path: Path):
     """Yield work-order completion-notice files, skipping processed items.
 
-    Per D024, a completion notice is written to the manager's inbox as
-    ``inbox/claude/<date>_<agent>_<wo-id>-complete.md``. Files under ``_read/``
-    are already processed and are skipped.
+    Per D024, a worker writes a completion notice to the manager's inbox as
+    ``inbox/claude/<date>_<agent>_<wo-id>-complete.md``. Only files that match
+    this shape are considered:
+
+      * located in ``inbox/claude/`` (the manager inbox), and
+      * whose filename names a specific work order (``WO-NNN``) and contains
+        "complete".
+
+    This excludes release-level notices/decisions addressed elsewhere (e.g.
+    ``inbox/CEO/..._v1-release-complete.md``), which are not per-work-order
+    completion notices and have no ``release_target`` obligation.
     """
-    inbox_dir = sync_path / "inbox"
-    if not inbox_dir.is_dir():
+    inbox = sync_path / "inbox" / "claude"
+    if not inbox.is_dir():
         return
-    for path in inbox_dir.rglob("*.md"):
+    for path in inbox.rglob("*.md"):
         if "_read" in path.parts:
             continue
-        if "complete" not in path.name.lower():
+        name = path.name.lower()
+        if "complete" not in name:
+            continue
+        if not WO_REF_PATTERN.search(path.name):
             continue
         yield path
 
