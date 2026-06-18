@@ -984,11 +984,12 @@ class TestReviewFileBundling:
         review_issues = [i for i in result.issues if "multiple work orders" in i.message]
         assert len(review_issues) == 0
 
-    def test_bundled_review_is_error(self, fresh_project, sync_path):
+    def test_filename_bundled_is_error(self, fresh_project, sync_path):
+        """A review request named for two work orders is flagged."""
         self._write_inbox_review(
             sync_path,
-            "2026-06-18_gemini_WO-055-review.md",
-            "# Review for WO-055 and WO-044\n\nBoth bundled here.",
+            "2026-06-18_gemini_WO-055-WO-044-review.md",
+            "# Review for both work orders.",
         )
         result = validate(fresh_project)
         review_issues = [i for i in result.issues if "multiple work orders" in i.message]
@@ -997,16 +998,16 @@ class TestReviewFileBundling:
         assert "WO-044" in review_issues[0].message
         assert "WO-055" in review_issues[0].message
 
-    def test_filename_and_content_combined(self, fresh_project, sync_path):
-        """A WO in the filename plus a different WO in content counts as bundling."""
+    def test_content_reference_not_flagged(self, fresh_project, sync_path):
+        """A single-WO request that references another WO in prose is NOT flagged."""
         self._write_inbox_review(
             sync_path,
             "2026-06-18_gemini_WO-055-review.md",
-            "Also incorporates WO-060 changes.",
+            "Also incorporates WO-060 changes and depends on WO-044.",
         )
         result = validate(fresh_project)
         review_issues = [i for i in result.issues if "multiple work orders" in i.message]
-        assert len(review_issues) == 1
+        assert len(review_issues) == 0
 
     def test_repeated_same_wo_is_not_bundling(self, fresh_project, sync_path):
         """Mentioning the same WO multiple times is fine."""
@@ -1028,17 +1029,48 @@ class TestReviewFileBundling:
         review_issues = [i for i in result.issues if "multiple work orders" in i.message]
         assert len(review_issues) == 0
 
+    def test_review_plan_not_flagged(self, fresh_project, sync_path):
+        """A review *plan* covering several WOs is not a per-WO request (real-world FP)."""
+        self._write_inbox_review(
+            sync_path,
+            "2026-06-09_claude_detection-feed-review-plan.md",
+            "Plan covering WO-033, WO-044, WO-045, WO-046, WO-047.",
+        )
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 0
+
+    def test_verdict_file_not_flagged(self, fresh_project, sync_path):
+        """A QA verdict referencing a related WO is not a review request (real-world FP)."""
+        (sync_path / "reviews" / "2026-06-18_gemma_WO-063-verdict.md").write_text(
+            "Verdict on WO-063; supersedes WO-055.", encoding="utf-8"
+        )
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 0
+
+    def test_single_wo_request_with_extra_suffix_not_flagged(self, fresh_project, sync_path):
+        """A '-review.md' request named for one WO is fine even if prose names others."""
+        self._write_inbox_review(
+            sync_path,
+            "2026-06-10_claude_WO-060-qa-gate-and-review.md",
+            "QA gate for WO-060; relates to WO-059.",
+        )
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 0
+
     def test_processed_review_in_read_ignored(self, fresh_project, sync_path):
         """A bundled review already moved to _read/ is not re-flagged."""
-        path = sync_path / "inbox" / "gemma" / "_read" / "2026-06-18_gemini_WO-055-review.md"
+        path = sync_path / "inbox" / "gemma" / "_read" / "2026-06-18_gemini_WO-055-WO-044-review.md"
         path.write_text("Review for WO-055 and WO-044.", encoding="utf-8")
         result = validate(fresh_project)
         review_issues = [i for i in result.issues if "multiple work orders" in i.message]
         assert len(review_issues) == 0
 
     def test_reviews_dir_bundled_is_error(self, fresh_project, sync_path):
-        """A bundled review in the reviews/ directory is also flagged."""
-        (sync_path / "reviews" / "WO-055-review.md").write_text(
+        """A review request named for two WOs in the reviews/ directory is flagged."""
+        (sync_path / "reviews" / "WO-055-WO-044-review.md").write_text(
             "Bundles WO-055 with WO-044.", encoding="utf-8"
         )
         result = validate(fresh_project)
@@ -1128,6 +1160,30 @@ class TestCompletionNoticeReleaseTarget:
             sync_path,
             "2026-06-18_gemini_WO-055-complete.md",
             "# Completion\n\n```yaml\nwo_id: WO-055\nrelease_target: v1.0.5\n```\n",
+        )
+        result = validate(fresh_project)
+        notice_issues = [i for i in result.issues if "release_target" in i.message]
+        assert len(notice_issues) == 0
+
+    def test_ceo_release_notice_not_flagged(self, fresh_project, sync_path):
+        """A CEO-directed release notice is not a per-WO completion notice (real-world FP)."""
+        (sync_path / "inbox" / "CEO" / "2026-05-27_claude_v1-release-complete.md").write_text(
+            "v1.0.0 released and deployed. No release_target field here.",
+            encoding="utf-8",
+        )
+        (sync_path / "inbox" / "CEO" / "2026-06-09_claude_detection-batch-complete-release-decision.md").write_text(
+            "Release decision for the detection batch.", encoding="utf-8"
+        )
+        result = validate(fresh_project)
+        notice_issues = [i for i in result.issues if "release_target" in i.message]
+        assert len(notice_issues) == 0
+
+    def test_completion_without_wo_id_not_flagged(self, fresh_project, sync_path):
+        """A 'complete' notice in claude inbox without a WO id is not a WO completion."""
+        self._write_notice(
+            sync_path,
+            "2026-06-18_claude_sprint-complete.md",
+            "Sprint wrapped up.",
         )
         result = validate(fresh_project)
         notice_issues = [i for i in result.issues if "release_target" in i.message]

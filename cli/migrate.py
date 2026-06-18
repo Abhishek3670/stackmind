@@ -92,6 +92,16 @@ def get_pending_migrations(current_version: str, target_version: str | None, mig
     return pending
 
 
+def _resolve_targets(sync_path: Path, action: dict) -> list[Path]:
+    """Resolve the file targets of an action via 'glob' or 'file'."""
+    if "glob" in action:
+        return sorted(p for p in sync_path.glob(action["glob"]) if p.is_file())
+    if "file" in action:
+        p = sync_path / action["file"]
+        return [p] if p.exists() else []
+    return []
+
+
 def _execute_action(sync_path: Path, action: dict, direction: str) -> bool:
     """Execute a single migration action."""
     action_type = action.get("action")
@@ -149,6 +159,49 @@ def _execute_action(sync_path: Path, action: dict, direction: str) -> bool:
             return False
         data[action["field"]] = action["value"]
         _save_yaml(file_path, data)
+        return True
+
+    elif action_type == "normalize_enum_field":
+        # Coerce a drifted free-form field value back into an allowed enum.
+        # The original value is preserved (losslessly) into `preserve_to` so
+        # the change is reversible and no information is lost.
+        field = action["field"]
+        allowed = set(action.get("allowed", []))
+        mapping = action.get("mapping", {})
+        fallback = action.get("fallback")
+        preserve_to = action.get("preserve_to")
+        for fp in _resolve_targets(sync_path, action):
+            data = _load_yaml(fp)
+            if not isinstance(data, dict) or field not in data:
+                continue
+            value = data[field]
+            if not isinstance(value, str) or value in allowed:
+                continue
+            mapped = fallback
+            for key, enum_value in mapping.items():
+                if key.lower() in value.lower():
+                    mapped = enum_value
+                    break
+            if mapped is None:
+                continue
+            if preserve_to and not data.get(preserve_to):
+                data[preserve_to] = value
+            data[field] = mapped
+            _save_yaml(fp, data)
+        return True
+
+    elif action_type == "restore_field":
+        # Inverse of normalize_enum_field: restore the original value from the
+        # preserved source field and drop the source.
+        field = action["field"]
+        source = action["source"]
+        for fp in _resolve_targets(sync_path, action):
+            data = _load_yaml(fp)
+            if not isinstance(data, dict) or source not in data:
+                continue
+            data[field] = data[source]
+            del data[source]
+            _save_yaml(fp, data)
         return True
 
     return False

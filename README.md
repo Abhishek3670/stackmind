@@ -2,7 +2,7 @@
 
 > Reusable Multi-Agent Engineering Runtime Platform
 
-**Version:** 1.1.0  
+**Version:** 1.2.0  
 **Status:** Production Ready
 
 ---
@@ -210,7 +210,15 @@ down:
     field: graph_version
 ```
 
-Supported actions: `add_field`, `remove_field`, `add_dir`, `remove_dir`, `rename`, `set_value`
+Supported actions: `add_field`, `remove_field`, `add_dir`, `remove_dir`, `rename`, `set_value`, `normalize_enum_field`, `restore_field`
+
+The `normalize_enum_field` action coerces a drifted free-form field value back
+into an allowed enum (preserving the original losslessly via `preserve_to`), and
+`restore_field` is its inverse for rollback. Both accept a `glob` to target many
+files (e.g. `runtime/boot/*.yaml`). These power the `1.1.0 → 1.2.0` migration,
+which normalizes legacy `phase_status` values such as
+`RELEASED_DEPLOYED_HEALTHY (...)` to the lifecycle enum while stashing the
+original text in `phase_status_detail`.
 
 ## Architecture
 
