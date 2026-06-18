@@ -59,7 +59,7 @@ class TestValidate:
     def test_missing_sync_is_error(self, tmp_path):
         result = validate(tmp_path)
         assert not result.passed
-        assert any("not a STACKMIND runtime" in i.message for i in result.errors)
+        assert any("not a stackmind runtime" in i.message for i in result.errors)
 
     def test_missing_agents_md(self, fresh_project):
         (fresh_project / "AGENTS.md").unlink()
@@ -576,3 +576,621 @@ class TestWorkOrderDeliverableValidation:
         result = validate(fresh_project)
         deliverable_issues = [i for i in result.issues if "deliverable" in i.message]
         assert len(deliverable_issues) == 0
+
+
+# ─── Rework Budget Tests ──────────────────────────────────────────
+
+
+class TestReworkBudget:
+    """Tests for rework budget validation."""
+
+    def test_exhausted_budget_without_block_flag_errors(self, fresh_project, sync_path):
+        """WO with rework_count >= rework_budget but blocked_by_rework=false is an error."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "FEATURE",
+            "title": "Failing feature",
+            "status": "ACTIVE",
+            "priority": "P2",
+            "assigned_agents": ["gemini"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml",
+            "rework_budget": 2,
+            "rework_count": 2,
+            "blocked_by_rework": False,
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        rework_issues = [i for i in result.issues if "rework budget" in i.message]
+        assert len(rework_issues) == 1
+        assert "WO-001" in rework_issues[0].message
+
+    def test_blocked_without_escalation_errors(self, fresh_project, sync_path):
+        """WO with blocked_by_rework=true but no escalation file is an error."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "FEATURE",
+            "title": "Blocked feature",
+            "status": "BLOCKED",
+            "priority": "P2",
+            "assigned_agents": ["gemini"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "BLOCKED/WO-001.yaml",
+            "rework_budget": 2,
+            "rework_count": 2,
+            "blocked_by_rework": True,
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        escalation_issues = [i for i in result.issues if "escalation" in i.message]
+        assert len(escalation_issues) == 1
+
+    def test_blocked_with_escalation_passes(self, fresh_project, sync_path):
+        """WO blocked_by_rework=true with matching escalation file passes."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "FEATURE",
+            "title": "Blocked feature",
+            "status": "BLOCKED",
+            "priority": "P2",
+            "assigned_agents": ["gemini"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "BLOCKED/WO-001.yaml",
+            "rework_budget": 2,
+            "rework_count": 2,
+            "blocked_by_rework": True,
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        escalation = sync_path / "escalations" / "WO-001-rework.yaml"
+        escalation.write_text(yaml.dump({
+            "wo_id": "WO-001",
+            "reason": "Agent keeps misinterpreting animation model",
+            "attempts_summary": ["WO-001: CSS 3D", "WO-003: Z-layers"],
+            "filed_by": "claude",
+            "filed_at": "2026-05-25T10:00:00Z",
+            "resolution": None,
+        }), encoding="utf-8")
+
+        result = validate(fresh_project)
+        rework_issues = [i for i in result.issues if "rework" in i.message.lower()]
+        assert len(rework_issues) == 0
+
+    def test_within_budget_passes(self, fresh_project, sync_path):
+        """WO with rework_count < rework_budget passes without issues."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "FEATURE",
+            "title": "In-progress feature",
+            "status": "ACTIVE",
+            "priority": "P2",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml",
+            "rework_budget": 2,
+            "rework_count": 1,
+            "blocked_by_rework": False,
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        rework_issues = [i for i in result.issues if "rework" in i.message.lower()]
+        assert len(rework_issues) == 0
+
+    def test_exempt_types_skip_rework_check(self, fresh_project, sync_path):
+        """PHASE/RESEARCH/AUDIT/VALIDATION types are exempt from rework budgets."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "RESEARCH",
+            "title": "Exploratory research",
+            "status": "ACTIVE",
+            "priority": "P3",
+            "assigned_agents": ["claude"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml",
+            "rework_count": 5,
+            "blocked_by_rework": False,
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        rework_issues = [i for i in result.issues if "rework" in i.message.lower()]
+        assert len(rework_issues) == 0
+
+    def test_default_budget_applied(self, fresh_project, sync_path):
+        """WO without explicit rework_budget uses default (2)."""
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        index_data["orders"].append({
+            "id": "WO-001",
+            "type": "BUGFIX",
+            "title": "Recurring bug",
+            "status": "ACTIVE",
+            "priority": "P1",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+            "file": "ACTIVE/WO-001.yaml",
+            "rework_count": 2,
+        })
+        index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+        result = validate(fresh_project)
+        rework_issues = [i for i in result.issues if "rework budget" in i.message]
+        assert len(rework_issues) == 1
+
+
+# ─── Canonical Drift Tests (PLAT-01 / CODEX-03) ─────────────────
+
+
+class TestCanonicalDrift:
+    """Tests for TREE.yaml <-> INDEX.yaml canonical drift detection.
+
+    PLAT-01: boot integrity must anchor to an external ground-truth source
+    (INDEX.yaml) rather than comparing two potentially-stale artifacts.
+    CODEX-03: cross-validate work-order totals between TREE and INDEX.
+    """
+
+    def _set_tree_totals(self, sync_path, **totals):
+        tree = sync_path / "runtime" / "TREE.yaml"
+        data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        data.setdefault("work_orders", {}).update(totals)
+        tree.write_text(yaml.dump(data), encoding="utf-8")
+
+    def _set_index_totals(self, sync_path, **totals):
+        index = sync_path / "work-orders" / "INDEX.yaml"
+        data = yaml.safe_load(index.read_text(encoding="utf-8"))
+        data.update(totals)
+        index.write_text(yaml.dump(data), encoding="utf-8")
+
+    def test_fresh_runtime_has_no_drift(self, fresh_project):
+        """Fresh runtime (all totals zero) reports no canonical drift."""
+        result = validate(fresh_project)
+        drift_issues = [i for i in result.issues if "Canonical drift" in i.message]
+        assert len(drift_issues) == 0
+
+    def test_completed_total_mismatch_is_error(self, fresh_project, sync_path):
+        """TREE total_completed != INDEX total_completed is an ERROR."""
+        self._set_tree_totals(sync_path, total_completed=5)
+        self._set_index_totals(sync_path, total_completed=3)
+
+        result = validate(fresh_project)
+        drift_issues = [i for i in result.issues if "Canonical drift" in i.message]
+        assert len(drift_issues) == 1
+        assert drift_issues[0].severity == Severity.ERROR
+        assert "total_completed" in drift_issues[0].message
+        assert drift_issues[0].layer == "Boot Integrity"
+
+    def test_active_total_mismatch_is_error(self, fresh_project, sync_path):
+        """TREE total_active != INDEX total_active is an ERROR."""
+        self._set_tree_totals(sync_path, total_active=2)
+        self._set_index_totals(sync_path, total_active=0)
+
+        result = validate(fresh_project)
+        drift_issues = [i for i in result.issues if "Canonical drift" in i.message]
+        assert len(drift_issues) == 1
+        assert "total_active" in drift_issues[0].message
+
+    def test_multiple_total_mismatches_reported_separately(self, fresh_project, sync_path):
+        """Each diverging counter is reported as its own issue."""
+        self._set_tree_totals(sync_path, total_active=1, total_completed=4)
+        self._set_index_totals(sync_path, total_active=0, total_completed=0)
+
+        result = validate(fresh_project)
+        drift_issues = [i for i in result.issues if "Canonical drift" in i.message]
+        assert len(drift_issues) == 2
+
+    def test_matching_totals_pass(self, fresh_project, sync_path):
+        """Equal totals across TREE and INDEX produce no drift error."""
+        self._set_tree_totals(sync_path, total_active=2, total_completed=7, total_blocked=1)
+        self._set_index_totals(sync_path, total_active=2, total_completed=7, total_blocked=1)
+
+        result = validate(fresh_project)
+        drift_issues = [i for i in result.issues if "Canonical drift" in i.message]
+        assert len(drift_issues) == 0
+
+    def test_missing_index_skips_drift_check(self, fresh_project, sync_path):
+        """Drift check is skipped (no crash) when INDEX.yaml is absent."""
+        self._set_tree_totals(sync_path, total_completed=5)
+        (sync_path / "work-orders" / "INDEX.yaml").unlink()
+
+        result = validate(fresh_project)
+        drift_issues = [i for i in result.issues if "Canonical drift" in i.message]
+        assert len(drift_issues) == 0
+
+
+# ─── Snapshot Version Lag Tests (GEMMA-01) ──────────────────────
+
+
+class TestSnapshotVersionLag:
+    """Tests for per-agent snapshot version lag detection (GEMMA-01)."""
+
+    def _set_tree_version(self, sync_path, version):
+        tree = sync_path / "runtime" / "TREE.yaml"
+        data = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        data["tree_version"] = version
+        tree.write_text(yaml.dump(data), encoding="utf-8")
+
+    def _set_boot_version(self, sync_path, agent, version):
+        boot = sync_path / "runtime" / "boot" / f"{agent}.boot.yaml"
+        data = yaml.safe_load(boot.read_text(encoding="utf-8"))
+        data["tree_version"] = version
+        boot.write_text(yaml.dump(data), encoding="utf-8")
+
+    def test_fresh_runtime_no_lag_warning(self, fresh_project):
+        """Fresh runtime (boot and tree both version 1) emits no lag warning."""
+        result = validate(fresh_project)
+        lag_issues = [i for i in result.issues if "version lag" in i.message]
+        assert len(lag_issues) == 0
+
+    def test_lag_beyond_threshold_warns(self, fresh_project, sync_path):
+        """A snapshot lagging by more than the threshold (3) is a WARN."""
+        self._set_tree_version(sync_path, 10)
+        self._set_boot_version(sync_path, "gemma", 1)
+
+        result = validate(fresh_project)
+        lag_issues = [
+            i for i in result.issues
+            if "version lag" in i.message and "gemma" in i.message
+        ]
+        assert len(lag_issues) == 1
+        assert lag_issues[0].severity == Severity.WARN
+        assert "9 versions behind" in lag_issues[0].message
+
+    def test_lag_within_threshold_passes(self, fresh_project, sync_path):
+        """A snapshot lagging within the threshold produces no warning."""
+        self._set_tree_version(sync_path, 3)
+        self._set_boot_version(sync_path, "gemma", 1)  # lag = 2
+
+        result = validate(fresh_project)
+        lag_issues = [i for i in result.issues if "version lag" in i.message]
+        assert len(lag_issues) == 0
+
+    def test_lag_exactly_at_threshold_passes(self, fresh_project, sync_path):
+        """A lag equal to the threshold is not flagged (strictly greater-than)."""
+        self._set_tree_version(sync_path, 4)
+        self._set_boot_version(sync_path, "gemma", 1)  # lag = 3
+
+        result = validate(fresh_project)
+        lag_issues = [i for i in result.issues if "version lag" in i.message]
+        assert len(lag_issues) == 0
+
+    def test_lag_does_not_replace_exceeds_error(self, fresh_project, sync_path):
+        """A boot ahead of TREE is still an ERROR, not a lag warning."""
+        self._set_tree_version(sync_path, 2)
+        self._set_boot_version(sync_path, "gemma", 99)
+
+        result = validate(fresh_project)
+        lag_issues = [i for i in result.issues if "version lag" in i.message]
+        exceeds_issues = [i for i in result.issues if "exceeds" in i.message]
+        assert len(lag_issues) == 0
+        assert len(exceeds_issues) == 1
+
+
+# ─── Untracked .sync Path Tests (CODEX-02) ──────────────────────
+
+import subprocess
+
+
+def _git_available() -> bool:
+    try:
+        subprocess.run(
+            ["git", "--version"], capture_output=True, check=True, text=True
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return False
+
+
+def _git_init_sync(sync_path):
+    """Initialise .sync as a git repo with everything committed."""
+    env = {
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@test.dev",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@test.dev",
+    }
+    import os
+    full_env = {**os.environ, **env}
+    run = lambda args: subprocess.run(
+        args, cwd=str(sync_path), capture_output=True, check=True, text=True, env=full_env
+    )
+    run(["git", "init"])
+    run(["git", "add", "."])
+    run(["git", "commit", "-m", "init"])
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not available")
+class TestUntrackedSyncPaths:
+    """Tests for CODEX-02: untracked .sync paths flagged as compliance warnings."""
+
+    def test_non_git_sync_skips_check(self, fresh_project, sync_path):
+        """A non-git .sync (the default fixture) emits no untracked warnings."""
+        result = validate(fresh_project)
+        untracked = [i for i in result.issues if "Untracked path" in i.message]
+        assert len(untracked) == 0
+
+    def test_clean_repo_no_warning(self, fresh_project, sync_path):
+        """A fully-committed .sync repo produces no untracked warnings."""
+        _git_init_sync(sync_path)
+        result = validate(fresh_project)
+        untracked = [i for i in result.issues if "Untracked path" in i.message]
+        assert len(untracked) == 0
+
+    def test_untracked_file_is_warning(self, fresh_project, sync_path):
+        """An untracked file in the .sync repo is flagged as a WARN."""
+        _git_init_sync(sync_path)
+        (sync_path / "reviews" / "orphan-review.md").write_text(
+            "orphan", encoding="utf-8"
+        )
+        result = validate(fresh_project)
+        untracked = [i for i in result.issues if "Untracked path" in i.message]
+        assert len(untracked) == 1
+        assert untracked[0].severity == Severity.WARN
+        assert "orphan-review.md" in untracked[0].message
+
+    def test_untracked_does_not_fail_validation(self, fresh_project, sync_path):
+        """Untracked paths are warnings only — they do not fail validation."""
+        _git_init_sync(sync_path)
+        (sync_path / "reviews" / "orphan-review.md").write_text(
+            "orphan", encoding="utf-8"
+        )
+        result = validate(fresh_project)
+        assert result.passed  # no errors, only a warning
+
+
+
+# ─── Review File Bundling Tests (GEMINI-03) ─────────────────────
+
+
+class TestReviewFileBundling:
+    """Tests for GEMINI-03: review files must reference a single work order."""
+
+    def _write_inbox_review(self, sync_path, name, content):
+        path = sync_path / "inbox" / "gemma" / name
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_single_wo_review_passes(self, fresh_project, sync_path):
+        self._write_inbox_review(
+            sync_path,
+            "2026-06-18_gemini_WO-055-review.md",
+            "# Review request for WO-055\n\nPlease review the changes.",
+        )
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 0
+
+    def test_bundled_review_is_error(self, fresh_project, sync_path):
+        self._write_inbox_review(
+            sync_path,
+            "2026-06-18_gemini_WO-055-review.md",
+            "# Review for WO-055 and WO-044\n\nBoth bundled here.",
+        )
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 1
+        assert review_issues[0].severity == Severity.ERROR
+        assert "WO-044" in review_issues[0].message
+        assert "WO-055" in review_issues[0].message
+
+    def test_filename_and_content_combined(self, fresh_project, sync_path):
+        """A WO in the filename plus a different WO in content counts as bundling."""
+        self._write_inbox_review(
+            sync_path,
+            "2026-06-18_gemini_WO-055-review.md",
+            "Also incorporates WO-060 changes.",
+        )
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 1
+
+    def test_repeated_same_wo_is_not_bundling(self, fresh_project, sync_path):
+        """Mentioning the same WO multiple times is fine."""
+        self._write_inbox_review(
+            sync_path,
+            "2026-06-18_gemini_WO-055-review.md",
+            "WO-055 does X. WO-055 also does Y. See WO-055.",
+        )
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 0
+
+    def test_non_review_inbox_file_ignored(self, fresh_project, sync_path):
+        """A non-review inbox message mentioning multiple WOs is not flagged."""
+        (sync_path / "inbox" / "claude" / "2026-06-18_status.md").write_text(
+            "Status: WO-055 and WO-044 both in progress.", encoding="utf-8"
+        )
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 0
+
+    def test_processed_review_in_read_ignored(self, fresh_project, sync_path):
+        """A bundled review already moved to _read/ is not re-flagged."""
+        path = sync_path / "inbox" / "gemma" / "_read" / "2026-06-18_gemini_WO-055-review.md"
+        path.write_text("Review for WO-055 and WO-044.", encoding="utf-8")
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 0
+
+    def test_reviews_dir_bundled_is_error(self, fresh_project, sync_path):
+        """A bundled review in the reviews/ directory is also flagged."""
+        (sync_path / "reviews" / "WO-055-review.md").write_text(
+            "Bundles WO-055 with WO-044.", encoding="utf-8"
+        )
+        result = validate(fresh_project)
+        review_issues = [i for i in result.issues if "multiple work orders" in i.message]
+        assert len(review_issues) == 1
+
+
+
+# ─── Completion Notice release_target Tests (GEMINI-04) ─────────
+
+
+class TestCompletionNoticeReleaseTarget:
+    """Tests for GEMINI-04: completion notices must declare a release_target."""
+
+    def _write_notice(self, sync_path, name, content):
+        path = sync_path / "inbox" / "claude" / name
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_notice_with_release_target_passes(self, fresh_project, sync_path):
+        self._write_notice(
+            sync_path,
+            "2026-06-18_gemini_WO-055-complete.md",
+            "wo_id: WO-055\nstatus: COMPLETE (pending Gemma review)\n"
+            "release_target: v1.0.5\ncommit: abc123\n",
+        )
+        result = validate(fresh_project)
+        notice_issues = [i for i in result.issues if "release_target" in i.message]
+        assert len(notice_issues) == 0
+
+    def test_notice_without_release_target_is_error(self, fresh_project, sync_path):
+        self._write_notice(
+            sync_path,
+            "2026-06-18_gemini_WO-055-complete.md",
+            "wo_id: WO-055\nstatus: COMPLETE\ncommit: abc123\n",
+        )
+        result = validate(fresh_project)
+        notice_issues = [i for i in result.issues if "release_target" in i.message]
+        assert len(notice_issues) == 1
+        assert notice_issues[0].severity == Severity.ERROR
+        assert "WO-055-complete.md" in notice_issues[0].message
+
+    def test_empty_release_target_is_error(self, fresh_project, sync_path):
+        self._write_notice(
+            sync_path,
+            "2026-06-18_gemini_WO-055-complete.md",
+            "wo_id: WO-055\nrelease_target:\ncommit: abc123\n",
+        )
+        result = validate(fresh_project)
+        notice_issues = [i for i in result.issues if "release_target" in i.message]
+        assert len(notice_issues) == 1
+
+    def test_placeholder_release_target_is_error(self, fresh_project, sync_path):
+        self._write_notice(
+            sync_path,
+            "2026-06-18_gemini_WO-055-complete.md",
+            "wo_id: WO-055\nrelease_target: TBD\n",
+        )
+        result = validate(fresh_project)
+        notice_issues = [i for i in result.issues if "release_target" in i.message]
+        assert len(notice_issues) == 1
+
+    def test_non_completion_file_ignored(self, fresh_project, sync_path):
+        """A non-completion inbox message is not required to declare a target."""
+        self._write_notice(
+            sync_path,
+            "2026-06-18_gemini_status.md",
+            "Just a status update with no release_target.",
+        )
+        result = validate(fresh_project)
+        notice_issues = [i for i in result.issues if "release_target" in i.message]
+        assert len(notice_issues) == 0
+
+    def test_processed_notice_in_read_ignored(self, fresh_project, sync_path):
+        path = (
+            sync_path / "inbox" / "claude" / "_read"
+            / "2026-06-18_gemini_WO-055-complete.md"
+        )
+        path.write_text("wo_id: WO-055\nstatus: COMPLETE\n", encoding="utf-8")
+        result = validate(fresh_project)
+        notice_issues = [i for i in result.issues if "release_target" in i.message]
+        assert len(notice_issues) == 0
+
+    def test_release_target_in_fenced_yaml_passes(self, fresh_project, sync_path):
+        """release_target inside a fenced YAML block is still recognised."""
+        self._write_notice(
+            sync_path,
+            "2026-06-18_gemini_WO-055-complete.md",
+            "# Completion\n\n```yaml\nwo_id: WO-055\nrelease_target: v1.0.5\n```\n",
+        )
+        result = validate(fresh_project)
+        notice_issues = [i for i in result.issues if "release_target" in i.message]
+        assert len(notice_issues) == 0
+
+
+
+# ─── .sync-ref Anchoring Tests (PLAT-05) ────────────────────────
+
+
+@pytest.mark.skipif(not _git_available(), reason="git not available")
+class TestSyncRefAnchoring:
+    """Tests for PLAT-05: .sync HEAD vs tracked .sync-ref."""
+
+    def _head(self, sync_path):
+        import subprocess
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(sync_path), capture_output=True, check=True, text=True
+        ).stdout.strip()
+
+    def _commit_new(self, sync_path):
+        import os, subprocess
+        env = {**os.environ,
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t.dev",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t.dev"}
+        (sync_path / "state" / "extra.md").write_text("more", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=str(sync_path), capture_output=True, check=True, text=True, env=env)
+        subprocess.run(["git", "commit", "-m", "second"], cwd=str(sync_path), capture_output=True, check=True, text=True, env=env)
+
+    def test_no_sync_ref_skips(self, fresh_project, sync_path):
+        _git_init_sync(sync_path)
+        result = validate(fresh_project)
+        ref_issues = [i for i in result.issues if ".sync-ref" in i.message or ".sync HEAD" in i.message]
+        assert len(ref_issues) == 0
+
+    def test_matching_ref_passes(self, fresh_project, sync_path):
+        _git_init_sync(sync_path)
+        (fresh_project / ".sync-ref").write_text(self._head(sync_path), encoding="utf-8")
+        result = validate(fresh_project)
+        ref_issues = [i for i in result.issues if ".sync HEAD" in i.message]
+        assert len(ref_issues) == 0
+
+    def test_mismatched_ref_warns(self, fresh_project, sync_path):
+        _git_init_sync(sync_path)
+        (fresh_project / ".sync-ref").write_text(self._head(sync_path), encoding="utf-8")
+        # Advance .sync HEAD without updating .sync-ref.
+        self._commit_new(sync_path)
+        result = validate(fresh_project)
+        ref_issues = [i for i in result.issues if ".sync HEAD" in i.message]
+        assert len(ref_issues) == 1
+        assert ref_issues[0].severity == Severity.WARN
+
+    def test_empty_ref_warns(self, fresh_project, sync_path):
+        _git_init_sync(sync_path)
+        (fresh_project / ".sync-ref").write_text("", encoding="utf-8")
+        result = validate(fresh_project)
+        ref_issues = [i for i in result.issues if ".sync-ref is empty" in i.message]
+        assert len(ref_issues) == 1
+
+    def test_non_git_sync_skips(self, fresh_project, sync_path):
+        # .sync-ref present but .sync is not a git repo (default fixture).
+        (fresh_project / ".sync-ref").write_text("deadbeef", encoding="utf-8")
+        result = validate(fresh_project)
+        ref_issues = [i for i in result.issues if ".sync HEAD" in i.message]
+        assert len(ref_issues) == 0

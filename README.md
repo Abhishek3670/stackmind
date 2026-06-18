@@ -52,7 +52,9 @@ stackmind shutdown claude
 | `stackmind validate` | Validate runtime health (4-layer validation) |
 | `stackmind doctor` | Check runtime status and compatibility |
 | `stackmind migrate` | Apply pending migrations |
-| `stackmind shutdown` | Shutdown agent with handoff validation |
+| `stackmind shutdown` | Shutdown agent with handoff + inbox-drain validation |
+| `stackmind promote` | Promote a worker draft snapshot to canonical (validation-gated) |
+| `stackmind lock` | Manage the runtime write lock (`acquire`/`release`/`status`) |
 
 ### Validate Options
 
@@ -73,9 +75,35 @@ stackmind migrate --to 1.1.0           # Migrate to specific version
 ### Shutdown Options
 
 ```bash
-stackmind shutdown claude              # Shutdown with handoff validation
+stackmind shutdown claude              # Shutdown with handoff + inbox-drain validation
 stackmind shutdown codex --force       # Force shutdown (not recommended)
 ```
+
+Shutdown enforces a handoff report and a drained inbox (zero unprocessed
+items), persists a freshly re-read boot snapshot, and releases the agent's
+write lock.
+
+### Promote Options
+
+```bash
+stackmind promote codex                # Validate draft → promote → validate canonical
+```
+
+Promotion is gated: the worker draft at `runtime/drafts/<agent>.boot.draft.yaml`
+is validated before promotion and the canonical `runtime/boot/<agent>.boot.yaml`
+is validated after. A `NORMALIZATION` decision is recorded on success; a blocker
+is written to Claude's inbox on failure.
+
+### Lock Options
+
+```bash
+stackmind lock acquire claude --session-id 31   # Acquire the write lock
+stackmind lock status                           # Show current lock holder
+stackmind lock release claude                   # Release the write lock
+```
+
+The write lock (`.sync/runtime/LOCK`) serializes canonical writes across agent
+sessions.
 
 ## Generated Structure
 
@@ -89,7 +117,10 @@ my-project/
     ├── MIGRATIONS.yaml    # Applied migrations log
     ├── runtime/
     │   ├── TREE.yaml      # Team state (with graph_version)
-    │   └── boot/          # Agent snapshots
+    │   ├── LOCK           # Write lock (when held) — serializes canonical writes
+    │   ├── boot/          # Canonical agent snapshots (Claude-owned)
+    │   ├── drafts/        # Worker draft snapshots (promoted via `stackmind promote`)
+    │   └── receipts/      # Shutdown receipts
     ├── work-orders/       # Task management
     │   ├── INDEX.yaml     # Work order index
     │   ├── ACTIVE/        # Active work orders
@@ -101,8 +132,13 @@ my-project/
     │   └── CEO/           # CEO inbox
     │       └── _read/     # Processed messages
     ├── outbox/            # Agent reports & handoffs
-    └── decisions/         # Decision log
+    ├── reviews/           # Code review history
+    └── decisions/         # Decision log (incl. auto NORMALIZATION entries)
 ```
+
+> A `.sync-ref` file tracked in the **main** project repo records the
+> last-known-good `.sync` commit SHA, giving the main repo a verifiable anchor
+> into the git-ignored `.sync` repo (validated by `stackmind validate`).
 
 ## Validation Layers
 
@@ -110,8 +146,24 @@ stackmind validate runs 4 validation layers:
 
 1. **Schema Validation** — YAML syntax, JSON Schema compliance
 2. **Structure Validation** — Directory structure, required files
-3. **Protocol Compliance** — Authority model, blocked agent validation, deliverable requirements
-4. **Boot Integrity** — Snapshot consistency, version alignment, graph_version checks
+3. **Protocol Compliance** — Authority model, blocked-agent validation, deliverable requirements, write-lock integrity, untracked `.sync` paths, review-file bundling (one review per WO), and completion-notice `release_target`
+4. **Boot Integrity** — Snapshot consistency, version alignment, graph_version checks, canonical drift (TREE vs INDEX), snapshot version lag, and `.sync-ref` anchoring
+
+### Runtime Integrity Enforcement
+
+These checks close the canonical-drift gaps where agents could pass their own
+boot checks while being silently wrong about shared state:
+
+- **Canonical drift** — `TREE.yaml` work-order totals must match `INDEX.yaml`
+  (the work-order ledger is the external ground truth).
+- **Snapshot version lag** — an agent snapshot lagging `TREE.yaml` by more than
+  3 versions is flagged (broken session continuity).
+- **Write lock** — `.sync/runtime/LOCK` serializes canonical writes; `validate`
+  flags a malformed lock or an unknown holder.
+- **Promotion gate** — `stackmind promote` validates a draft before and after
+  promotion and records a `NORMALIZATION` decision.
+- **`.sync-ref` anchoring** — the live `.sync` HEAD is checked against the SHA
+  tracked by the main repo.
 
 ## Work Order Schema
 
@@ -192,11 +244,11 @@ Workers (Codex, Gemini, Local-LLM)
 
 stackmind enforces:
 
-- **D021** — Agent boot/resume optimization
-- **D022** — Work order architecture with deliverable tracking
-- **D023.x** — Protocol enforcement patches
-- **D024** — Mandatory review handoff
-- **D031** — Runtime versioning and migration
+- **Agent boot/resume optimization** — Session continuity across context limits
+- **Work order architecture** — Deliverable tracking and atomicity enforcement
+- **Protocol integrity** — Hash-verified protocol documents prevent unauthorized changes
+- **Mandatory review handoff** — Agents must hand off work before shutdown
+- **Runtime versioning and migration** — Seamless upgrades via YAML manifests
 
 ## Documentation
 

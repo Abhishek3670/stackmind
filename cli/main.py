@@ -201,5 +201,139 @@ def shutdown(agent: str, project_path: str, force: bool):
         raise SystemExit(1)
 
 
+@cli.command()
+@click.argument("agent", type=str)
+@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
+def promote(agent: str, project_path: str):
+    """Promote a worker's draft snapshot to canonical (CLAUDE-01).
+
+    Enforces the validate -> promote -> validate gate: the draft at
+    runtime/drafts/<agent>.boot.draft.yaml is validated before promotion and
+    the canonical runtime/boot/<agent>.boot.yaml is validated after. On any
+    failure the promotion is aborted/rolled back and a blocker is written to
+    Claude's inbox.
+
+    Examples:
+
+        stackmind promote codex
+
+        stackmind promote gemma --project ./my-project
+    """
+    from .promote import promote as run_promote
+
+    success = run_promote(project_path=Path(project_path), agent=agent)
+    if not success:
+        raise SystemExit(1)
+
+
+@cli.group()
+def lock():
+    """Manage the runtime write lock (PLAT-03).
+
+    The write lock serializes canonical writes (runtime/boot/, TREE.yaml)
+    across agent sessions. An agent acquires the lock when it begins a
+    session and releases it at shutdown.
+    """
+    pass
+
+
+@lock.command("acquire")
+@click.argument("agent", type=str)
+@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
+@click.option("--session-id", "session_id", default=None, help="Session identifier to record in the lock")
+@click.option("--force", is_flag=True, help="Steal the lock even if another agent holds it")
+def lock_acquire(agent: str, project_path: str, session_id: str | None, force: bool):
+    """Acquire the write lock for AGENT.
+
+    Examples:
+
+        stackmind lock acquire claude --session-id 31
+
+        stackmind lock acquire codex --force
+    """
+    from rich.console import Console
+
+    from .lock import acquire_lock
+
+    console = Console()
+    sync_path = Path(project_path) / ".sync"
+    if not sync_path.exists():
+        console.print("[bold red][x] No .sync/ directory found[/bold red]")
+        raise SystemExit(1)
+
+    ok, message = acquire_lock(sync_path, agent, session_id=session_id, force=force)
+    if ok:
+        console.print(f"[green][\u2713] {message}[/green]")
+    else:
+        console.print(f"[bold red][x] {message}[/bold red]")
+        raise SystemExit(1)
+
+
+@lock.command("release")
+@click.argument("agent", type=str)
+@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
+@click.option("--force", is_flag=True, help="Release even if another agent holds the lock")
+def lock_release(agent: str, project_path: str, force: bool):
+    """Release the write lock held by AGENT.
+
+    Examples:
+
+        stackmind lock release claude
+
+        stackmind lock release codex --force
+    """
+    from rich.console import Console
+
+    from .lock import release_lock
+
+    console = Console()
+    sync_path = Path(project_path) / ".sync"
+    if not sync_path.exists():
+        console.print("[bold red][x] No .sync/ directory found[/bold red]")
+        raise SystemExit(1)
+
+    ok, message = release_lock(sync_path, agent, force=force)
+    if ok:
+        console.print(f"[green][\u2713] {message}[/green]")
+    else:
+        console.print(f"[bold red][x] {message}[/bold red]")
+        raise SystemExit(1)
+
+
+@lock.command("status")
+@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
+def lock_status(project_path: str):
+    """Show the current write-lock status.
+
+    Examples:
+
+        stackmind lock status
+    """
+    from rich.console import Console
+
+    from .lock import lock_is_malformed, read_lock
+
+    console = Console()
+    sync_path = Path(project_path) / ".sync"
+    if not sync_path.exists():
+        console.print("[bold red][x] No .sync/ directory found[/bold red]")
+        raise SystemExit(1)
+
+    if lock_is_malformed(sync_path):
+        console.print("[bold red][x] LOCK file present but malformed[/bold red]")
+        raise SystemExit(1)
+
+    current = read_lock(sync_path)
+    if current is None:
+        console.print("[dim]No lock held. Runtime is free for canonical writes.[/dim]")
+        return
+
+    console.print(
+        f"[bold]LOCK held by:[/bold] {current.get('held_by')}\n"
+        f"[bold]Session:[/bold] {current.get('session_id')}\n"
+        f"[bold]Acquired at:[/bold] {current.get('acquired_at')}"
+    )
+
+
 if __name__ == "__main__":
     cli()

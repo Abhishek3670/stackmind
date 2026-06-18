@@ -10,6 +10,7 @@ Implements four validation layers per D030 §7:
 import hashlib
 import json
 import re
+import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -345,6 +346,223 @@ def validate_protocol(sync_path: Path, agents: list[str], result: ValidationResu
     # Validate blocked agents have non-empty blockers with valid references
     _validate_blocked_agents(sync_path, data, result)
 
+    # Validate the write lock (PLAT-03) integrity
+    _validate_lock(sync_path, agents, result)
+
+    # CODEX-02: flag untracked paths in the .sync repo as compliance warnings
+    _validate_untracked_sync(sync_path, result)
+
+    # GEMINI-03: flag review files that bundle multiple work orders
+    _validate_review_files(sync_path, result)
+
+    # GEMINI-04: require a declared release_target on completion notices
+    _validate_completion_notices(sync_path, result)
+
+
+# Unanchored work-order reference pattern (for scanning prose/filenames).
+WO_REF_PATTERN = re.compile(r"WO-\d{3}")
+
+
+def _iter_review_files(sync_path: Path):
+    """Yield review-request files, skipping processed (_read/) items.
+
+    Review files are discovered in two canonical locations:
+      * the dedicated ``reviews/`` directory (any ``.md``), and
+      * inbox messages whose filename marks them as reviews
+        (``*review*.md``), per D024's ``<date>_<agent>_<wo-id>-review.md``.
+    """
+    reviews_dir = sync_path / "reviews"
+    if reviews_dir.is_dir():
+        for path in reviews_dir.rglob("*.md"):
+            if "_read" in path.parts:
+                continue
+            yield path
+
+    inbox_dir = sync_path / "inbox"
+    if inbox_dir.is_dir():
+        for path in inbox_dir.rglob("*.md"):
+            if "_read" in path.parts:
+                continue
+            if "review" not in path.name.lower():
+                continue
+            yield path
+
+
+def _validate_review_files(sync_path: Path, result: ValidationResult) -> None:
+    """Flag review files that reference more than one work order (GEMINI-03).
+
+    D024 requires exactly one review request file per work order. Bundling
+    multiple work orders into a single review file makes partial
+    approval/rejection impossible and breaks per-WO auditability, so a review
+    file referencing two or more distinct WO IDs is a protocol violation
+    (ERROR). The filename and file contents are scanned together.
+    """
+    for review_path in _iter_review_files(sync_path):
+        try:
+            content = review_path.read_text(encoding="utf-8")
+        except OSError:
+            content = ""
+
+        wo_ids = sorted(set(WO_REF_PATTERN.findall(review_path.name + "\n" + content)))
+        if len(wo_ids) > 1:
+            rel = review_path.relative_to(sync_path).as_posix()
+            result.issues.append(Issue(
+                layer="Protocol",
+                severity=Severity.ERROR,
+                message=(
+                    f"Review file references multiple work orders "
+                    f"({', '.join(wo_ids)}): {rel} "
+                    f"— D024 requires one review file per work order (GEMINI-03)"
+                ),
+                path=rel,
+            ))
+
+
+# Matches a `release_target:` field with a non-empty value (ignoring an empty
+# value or a placeholder like "TBD"/"none"/"<...>").
+RELEASE_TARGET_PATTERN = re.compile(r"(?mi)^[ \t]*release_target[ \t]*:[ \t]*(.*?)[ \t]*$")
+_RELEASE_TARGET_PLACEHOLDERS = {"", "tbd", "none", "null", "n/a", "-"}
+
+
+def _iter_completion_notices(sync_path: Path):
+    """Yield work-order completion-notice files, skipping processed items.
+
+    Per D024, a completion notice is written to the manager's inbox as
+    ``inbox/claude/<date>_<agent>_<wo-id>-complete.md``. Files under ``_read/``
+    are already processed and are skipped.
+    """
+    inbox_dir = sync_path / "inbox"
+    if not inbox_dir.is_dir():
+        return
+    for path in inbox_dir.rglob("*.md"):
+        if "_read" in path.parts:
+            continue
+        if "complete" not in path.name.lower():
+            continue
+        yield path
+
+
+def _validate_completion_notices(sync_path: Path, result: ValidationResult) -> None:
+    """Require a declared ``release_target`` on completion notices (GEMINI-04).
+
+    A work order completed after a release tag must declare which release it
+    targets so Claude can make the final versioning decision. Shipping a
+    completion notice with no declared release target leaves versioning
+    undefined for in-flight changes and is a protocol violation (ERROR).
+    """
+    for notice_path in _iter_completion_notices(sync_path):
+        try:
+            content = notice_path.read_text(encoding="utf-8")
+        except OSError:
+            content = ""
+
+        match = RELEASE_TARGET_PATTERN.search(content)
+        value = match.group(1).strip().lower() if match else ""
+
+        if value in _RELEASE_TARGET_PLACEHOLDERS:
+            rel = notice_path.relative_to(sync_path).as_posix()
+            result.issues.append(Issue(
+                layer="Protocol",
+                severity=Severity.ERROR,
+                message=(
+                    f"Completion notice missing a declared 'release_target': {rel} "
+                    f"— workers must declare a release target (GEMINI-04)"
+                ),
+                path=rel,
+            ))
+
+
+def _validate_untracked_sync(sync_path: Path, result: ValidationResult) -> None:
+    """Flag untracked paths in the .sync git repo (CODEX-02).
+
+    In the .sync repo, an untracked file represents uncommitted work or an
+    orphaned artifact — potential non-compliance evidence (e.g. review files
+    never dispatched). The D023 shutdown sequence requires relevant paths to be
+    committed, so any untracked path is surfaced as a compliance WARNING.
+
+    The check is skipped silently when .sync is not a git repository or git is
+    unavailable, so it never blocks validation in non-git environments.
+    """
+    if not (sync_path / ".git").exists():
+        return
+
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=str(sync_path),
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        # git missing or repo unreadable — do not block validation.
+        return
+
+    for line in completed.stdout.splitlines():
+        # Porcelain v1 untracked entries are prefixed with "?? ".
+        if not line.startswith("??"):
+            continue
+        untracked_path = line[3:].strip().strip('"')
+        if not untracked_path:
+            continue
+        result.issues.append(Issue(
+            layer="Protocol",
+            severity=Severity.WARN,
+            message=(
+                f"Untracked path in .sync repo: {untracked_path} "
+                f"— commit or remove it before assigning new work (CODEX-02)"
+            ),
+            path=untracked_path,
+        ))
+
+
+def _validate_lock(sync_path: Path, agents: list[str], result: ValidationResult) -> None:
+    """Validate the .sync/runtime/LOCK write-lock marker (PLAT-03).
+
+    A held, well-formed lock is normal during an active session and is not an
+    issue. This check flags only integrity problems: a LOCK file that exists
+    but is malformed (ERROR), or one whose holder is not a known agent (WARN).
+    """
+    from .lock import get_lock_path, lock_is_malformed, read_lock
+
+    lock_path = get_lock_path(sync_path)
+    if not lock_path.exists():
+        return
+
+    if lock_is_malformed(sync_path):
+        result.issues.append(Issue(
+            layer="Protocol",
+            severity=Severity.ERROR,
+            message=(
+                "runtime/LOCK exists but is malformed "
+                "(must be a YAML mapping with a 'held_by' field)"
+            ),
+            path="runtime/LOCK",
+        ))
+        return
+
+    lock_data = read_lock(sync_path)
+    holder = lock_data.get("held_by") if lock_data else None
+
+    # Determine the set of known agents (boot snapshots + TREE.yaml agents).
+    known_agents = set(agents)
+    tree_path = sync_path / "runtime" / "TREE.yaml"
+    if tree_path.exists():
+        tree_data, _ = _load_yaml(tree_path)
+        if tree_data and isinstance(tree_data.get("agents"), dict):
+            known_agents.update(tree_data["agents"].keys())
+
+    if holder is not None and holder not in known_agents:
+        result.issues.append(Issue(
+            layer="Protocol",
+            severity=Severity.WARN,
+            message=(
+                f"runtime/LOCK held by unknown agent '{holder}' "
+                f"(not found in boot snapshots or TREE.yaml)"
+            ),
+            path="runtime/LOCK",
+        ))
+
 
 # Work order ID pattern
 WO_PATTERN = re.compile(r"^WO-\d{3}$")
@@ -436,8 +654,112 @@ def _validate_work_order_deliverables(sync_path: Path, result: ValidationResult)
                 path="work-orders/INDEX.yaml",
             ))
 
+    _validate_rework_budgets(sync_path, index_data, result)
+
+
+# Default rework budget for actionable work order types
+DEFAULT_REWORK_BUDGET = 2
+
+
+def _validate_rework_budgets(sync_path: Path, index_data: dict, result: ValidationResult) -> None:
+    """Validate rework budget constraints on work orders."""
+    if not index_data or "orders" not in index_data:
+        return
+
+    escalations_dir = sync_path / "escalations"
+
+    for order in index_data["orders"]:
+        wo_id = order.get("id", "unknown")
+        wo_type = order.get("type")
+
+        if wo_type not in DELIVERABLE_REQUIRED_TYPES:
+            continue
+
+        rework_budget = order.get("rework_budget", DEFAULT_REWORK_BUDGET)
+        rework_count = order.get("rework_count", 0)
+        blocked_by_rework = order.get("blocked_by_rework", False)
+
+        if rework_count >= rework_budget and not blocked_by_rework:
+            result.issues.append(Issue(
+                layer="Protocol",
+                severity=Severity.ERROR,
+                message=(
+                    f"Work order '{wo_id}' exhausted rework budget "
+                    f"({rework_count}/{rework_budget}) but blocked_by_rework is not set"
+                ),
+                path="work-orders/INDEX.yaml",
+            ))
+
+        if blocked_by_rework:
+            escalation_file = escalations_dir / f"{wo_id}-rework.yaml"
+            if not escalation_file.exists():
+                result.issues.append(Issue(
+                    layer="Protocol",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"Work order '{wo_id}' blocked_by_rework=true "
+                        f"but no escalation file at escalations/{wo_id}-rework.yaml"
+                    ),
+                    path=f"escalations/{wo_id}-rework.yaml",
+                ))
+
 
 # ─── Layer 4: Boot Integrity ────────────────────────────────────
+
+
+# Work-order total fields cross-checked between TREE.yaml and INDEX.yaml.
+# These are the canonical counters that must agree across the two sources of
+# truth; divergence indicates that one file was updated without the other.
+CANONICAL_TOTAL_FIELDS = ("total_active", "total_blocked", "total_completed")
+
+# Maximum number of tree_version revisions an agent's boot snapshot may lag
+# behind TREE.yaml before it is flagged as a session-continuity risk (GEMMA-01).
+SNAPSHOT_VERSION_LAG_THRESHOLD = 3
+
+
+def _validate_canonical_drift(sync_path: Path, tree_data: dict, result: ValidationResult) -> None:
+    """PLAT-01 / CODEX-03: cross-check TREE.yaml against INDEX.yaml.
+
+    The boot-integrity check used to compare boot snapshots only against
+    TREE.yaml. When TREE.yaml itself was stale, the comparison passed because
+    two stale artifacts agreed with each other rather than with ground truth.
+
+    INDEX.yaml is the work-order ledger and stays current through normal work
+    order operations, so its totals are treated as the external anchor. Any
+    disagreement between TREE.yaml's ``work_orders`` counters and INDEX.yaml's
+    top-level counters is reported as canonical drift (ERROR).
+    """
+    index_path = sync_path / "work-orders" / "INDEX.yaml"
+    if not index_path.exists():
+        return
+
+    index_data, err = _load_yaml(index_path)
+    if err or not index_data:
+        return
+
+    tree_totals = tree_data.get("work_orders")
+    if not isinstance(tree_totals, dict):
+        return
+
+    for field_name in CANONICAL_TOTAL_FIELDS:
+        tree_value = tree_totals.get(field_name)
+        index_value = index_data.get(field_name)
+
+        # Only compare when both sources declare the counter.
+        if tree_value is None or index_value is None:
+            continue
+
+        if tree_value != index_value:
+            result.issues.append(Issue(
+                layer="Boot Integrity",
+                severity=Severity.ERROR,
+                message=(
+                    f"Canonical drift: TREE.yaml work_orders.{field_name} "
+                    f"({tree_value}) != INDEX.yaml {field_name} ({index_value}) "
+                    f"— normalize TREE.yaml against the work-order ledger"
+                ),
+                path="runtime/TREE.yaml",
+            ))
 
 
 def validate_boot_integrity(sync_path: Path, agents: list[str], result: ValidationResult) -> None:
@@ -448,6 +770,10 @@ def validate_boot_integrity(sync_path: Path, agents: list[str], result: Validati
     tree_data, err = _load_yaml(tree_path)
     if err or not tree_data:
         return
+
+    # PLAT-01 / CODEX-03: anchor TREE.yaml to the work-order ledger before
+    # trusting it as the reference for per-agent boot comparisons.
+    _validate_canonical_drift(sync_path, tree_data, result)
 
     tree_version = tree_data.get("tree_version")
     protocol_hash_file = sync_path / "PROTOCOL_DIGEST.hash"
@@ -481,6 +807,25 @@ def validate_boot_integrity(sync_path: Path, agents: list[str], result: Validati
                     ),
                     path=f"runtime/boot/{agent}.boot.yaml",
                 ))
+            else:
+                # GEMMA-01: a snapshot that lags TREE.yaml by more than the
+                # configured threshold signals broken session continuity — the
+                # agent is likely doing full TREE re-reads every boot.
+                version_lag = tree_version - boot_tree_version
+                if version_lag > SNAPSHOT_VERSION_LAG_THRESHOLD:
+                    result.issues.append(Issue(
+                        layer="Boot Integrity",
+                        severity=Severity.WARN,
+                        message=(
+                            f"{agent}.boot.yaml snapshot version lag: "
+                            f"{version_lag} versions behind current TREE "
+                            f"(boot={boot_tree_version}, tree={tree_version}, "
+                            f"threshold={SNAPSHOT_VERSION_LAG_THRESHOLD}) "
+                            f"— agent may be running without session continuity; "
+                            f"recommend promoting a fresh {agent} snapshot"
+                        ),
+                        path=f"runtime/boot/{agent}.boot.yaml",
+                    ))
 
         # protocol hash alignment
         boot_hash = boot_data.get("protocol_digest_hash")
@@ -529,6 +874,69 @@ def validate_boot_integrity(sync_path: Path, agents: list[str], result: Validati
                     ),
                     path=f"runtime/boot/{agent}.boot.yaml",
                 ))
+
+
+# ─── Layer 5: .sync-ref Anchoring (PLAT-05) ─────────────────────
+
+
+def _git_head(sync_path: Path) -> str | None:
+    """Return the .sync repo HEAD commit SHA, or None if unavailable."""
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(sync_path),
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+    return completed.stdout.strip() or None
+
+
+def validate_sync_ref(project_path: Path, sync_path: Path, result: ValidationResult) -> None:
+    """Anchor the main repo to the .sync repo via a tracked .sync-ref (PLAT-05).
+
+    ``.sync/`` is git-ignored by the main repo, so its commit state is invisible
+    from ``git status`` in the main project. A ``.sync-ref`` file tracked in the
+    main repo records the last-known-good ``.sync`` commit SHA. This check
+    compares the live ``.sync`` HEAD against ``.sync-ref`` and warns if they
+    diverge — surfacing unexpected (or missing) ``.sync`` commits.
+
+    Skipped silently when ``.sync-ref`` is absent, ``.sync`` is not a git repo,
+    or git is unavailable, so it never blocks validation in those cases.
+    """
+    ref_file = project_path / ".sync-ref"
+    if not ref_file.exists():
+        return
+    if not (sync_path / ".git").exists():
+        return
+
+    head = _git_head(sync_path)
+    if head is None:
+        return
+
+    expected = ref_file.read_text(encoding="utf-8").strip()
+    if not expected:
+        result.issues.append(Issue(
+            layer="Boot Integrity",
+            severity=Severity.WARN,
+            message=".sync-ref is empty — cannot verify .sync repo commit state",
+            path=".sync-ref",
+        ))
+        return
+
+    if not head.startswith(expected) and not expected.startswith(head):
+        result.issues.append(Issue(
+            layer="Boot Integrity",
+            severity=Severity.WARN,
+            message=(
+                f".sync HEAD ({head[:12]}) does not match .sync-ref "
+                f"({expected[:12]}) — the .sync repo has unexpected or "
+                f"uncommitted commits relative to the main repo's anchor"
+            ),
+            path=".sync-ref",
+        ))
 
 
 # ─── Auto-fix ────────────────────────────────────────────────────
@@ -603,6 +1011,9 @@ def validate(project_path: Path, fix: bool = False) -> ValidationResult:
     validate_structure(project_path, sync_path, agents, result)
     validate_protocol(sync_path, agents, result)
     validate_boot_integrity(sync_path, agents, result)
+
+    # PLAT-05: anchor the main repo to the .sync repo via .sync-ref
+    validate_sync_ref(project_path, sync_path, result)
 
     # Auto-fix if requested
     if fix and result.warnings:
