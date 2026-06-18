@@ -2,4 +2,4 @@
 scratch/
 cli/_pycache__/
 cli/__pycache__/*
-tests/
+tests/__pycache__/
