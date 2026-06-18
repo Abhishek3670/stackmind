@@ -65,6 +65,9 @@ my-project/
 | `stackmind validate <path>` | Check runtime health |
 | `stackmind doctor <path>` | Detailed status report |
 | `stackmind migrate <path>` | Upgrade runtime version |
+| `stackmind shutdown <agent>` | End a session with handoff + inbox-drain validation |
+| `stackmind promote <agent>` | Promote a worker draft snapshot to canonical (gated) |
+| `stackmind lock <acquire\|release\|status>` | Manage the runtime write lock |
 
 ## Next Steps
 

@@ -161,8 +161,75 @@ timestamp: <ISO 8601>
 - Processed messages are moved to `_read/` (never deleted)
 - Agents scan only top-level inbox items (skip `_read/`)
 
-## Version Management (D031)
+## Runtime Integrity Enforcement
 
+The CLI enforces a set of runtime-integrity rules that close the canonical-drift
+gaps where an agent could pass its own boot checks while being silently wrong
+about shared state. The single root principle: **every canonical write must be
+anchored to an external source of truth and serialized.**
+
+### Write Lock (PLAT-03)
+
+Canonical writes (`runtime/boot/`, `TREE.yaml`) are serialized by an advisory
+write lock at `.sync/runtime/LOCK`:
+
+```yaml
+held_by: claude
+session_id: 30
+acquired_at: 2026-06-10T09:14:00+05:30
+```
+
+- `stackmind lock acquire <agent>` — refuses if another agent holds the lock.
+- `stackmind lock release <agent>` / `stackmind shutdown` — clears the lock.
+- `stackmind validate` flags a malformed lock (ERROR) or an unknown holder (WARN).
+
+### Fresh Snapshot Writes (CODEX-01)
+
+The shutdown sequence re-reads `runtime/TREE.yaml` immediately before writing a
+snapshot and syncs `tree_version`/`graph_version` to the current canonical
+values — never a value cached earlier in the session. This prevents stale
+version writes and keeps snapshots from silently lagging TREE (GEMMA-01).
+
+### Inbox Drain Gate (GEMMA-02)
+
+`stackmind shutdown` refuses to close a session while the agent's inbox has
+unprocessed items (top-level files not yet moved to `_read/`). Each item must
+have a documented outcome per D024.
+
+### Promotion Gate (CLAUDE-01)
+
+Promoting a worker draft to canonical follows
+`validate draft → promote → validate canonical`. A draft that fails schema
+validation is never promoted; a canonical that fails post-promotion validation
+is rolled back. Failures write a blocker to Claude's inbox.
+
+### Audit Trail (PLAT-04)
+
+A successful promotion auto-generates a `NORMALIZATION` decision in
+`decisions/` capturing the file changed and its from/to values, so canonical
+mutations are always traceable:
+
+```yaml
+id: D-047
+type: NORMALIZATION
+authored_by: claude
+session: 30
+timestamp: 2026-06-10T10:00:00+05:30
+changes:
+  - file: runtime/boot/claude.boot.yaml
+    session_count_from: 29
+    session_count_to: 30
+reason: Promoted claude draft snapshot to canonical boot file.
+```
+
+### Canonical Drift & Anchoring (PLAT-01, CODEX-03, PLAT-05)
+
+- `TREE.yaml` work-order totals must match the `INDEX.yaml` ledger (the
+  external ground truth); a mismatch is canonical drift (ERROR).
+- A `.sync-ref` file tracked in the main repo records the last-known-good
+  `.sync` commit SHA; `validate` compares it against the live `.sync` HEAD.
+
+## Version Management (D031)
 ### Semantic Versioning
 
 ```

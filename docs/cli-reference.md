@@ -14,6 +14,9 @@ pip install stackmind
 | `stackmind validate` | Validate runtime health |
 | `stackmind doctor` | Check runtime status |
 | `stackmind migrate` | Migrate runtime version |
+| `stackmind shutdown` | Shutdown an agent session with handoff validation |
+| `stackmind promote` | Promote a worker draft snapshot to canonical (gated) |
+| `stackmind lock` | Manage the runtime write lock (`acquire`/`release`/`status`) |
 
 ---
 
@@ -127,11 +130,18 @@ stackmind validate --fix
 │  Layer 4: Boot Integrity                │
 │  - Snapshot consistency                 │
 │  - Version alignment                    │
+│  - Canonical drift (TREE vs INDEX)      │
+│  - Snapshot version lag detection       │
+│  - .sync-ref anchoring                  │
 │  - Hash verification                    │
 ├─────────────────────────────────────────┤
 │  Layer 3: Protocol Compliance           │
 │  - D021-D031 rule enforcement           │
 │  - Authority model validation           │
+│  - Write-lock (LOCK) integrity          │
+│  - Untracked .sync path detection       │
+│  - Review-file bundling detection       │
+│  - Completion-notice release_target     │
 │  - Forbidden action detection           │
 ├─────────────────────────────────────────┤
 │  Layer 2: Structural Validation         │
@@ -145,6 +155,21 @@ stackmind validate --fix
 │  - Type checking                        │
 └─────────────────────────────────────────┘
 ```
+
+### Runtime Integrity Checks
+
+In addition to the base layers, `validate` enforces the runtime-integrity
+rules introduced to prevent silent canonical drift:
+
+| Check | Severity | Description |
+|-------|----------|-------------|
+| Canonical drift | ERROR | `TREE.yaml` work-order totals must match `INDEX.yaml` (the work-order ledger is the external anchor) |
+| Snapshot version lag | WARN | An agent boot snapshot lagging `TREE.yaml` by more than 3 versions signals broken session continuity |
+| LOCK integrity | ERROR / WARN | A malformed `runtime/LOCK` is an error; a lock held by an unknown agent is a warning |
+| Untracked `.sync` paths | WARN | Untracked files in the `.sync` git repo (e.g. orphaned review files) are flagged |
+| Review-file bundling | ERROR | A review file referencing more than one work order violates D024 (one review per WO) |
+| Completion `release_target` | ERROR | A work-order completion notice must declare a `release_target` |
+| `.sync-ref` anchoring | WARN | The live `.sync` HEAD must match the `.sync-ref` SHA tracked by the main repo |
 
 ### Output (Success)
 
@@ -217,7 +242,7 @@ stackmind doctor ./my-project
 Runtime Version Check
 ─────────────────────
 Runtime version: 1.0.0
-CLI version: 1.0.0
+CLI version: 1.1.0
 Compatibility: ✅ COMPATIBLE
 
 Schema Version Check
@@ -324,15 +349,150 @@ Migration complete. Runtime is now v1.2.0.
 
 ---
 
+## stackmind shutdown
+
+Shutdown an agent session with handoff validation. Updates `TREE.yaml`,
+persists the agent's boot snapshot, archives the handoff report, and releases
+the write lock.
+
+### Usage
+
+```bash
+stackmind shutdown <agent> [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `agent` | TEXT | Yes | Name of the agent to shut down |
+
+### Options
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--project` | `-p` | `.` | Project path |
+| `--force` | | False | Skip handoff/inbox gates (not recommended) |
+
+### Gates enforced
+
+- **Handoff report** must exist in the agent's outbox (unless `--force`).
+- **Inbox drain (GEMMA-02)**: the agent's inbox must contain zero unprocessed
+  items (top-level files not yet moved to `_read/`) before the session can
+  close. Each item needs a documented outcome per D024.
+
+### Snapshot freshness (CODEX-01)
+
+When persisting the boot snapshot, `shutdown` re-reads `TREE.yaml` at write
+time and syncs the snapshot's `tree_version`/`graph_version` to the current
+canonical values — never a value cached earlier in the session. This prevents
+both stale-version writes and silent snapshot version lag.
+
+### Examples
+
+```bash
+stackmind shutdown claude
+stackmind shutdown codex --project ./my-project
+stackmind shutdown gemini --force
+```
+
+---
+
+## stackmind promote
+
+Promote a worker's draft snapshot to the canonical boot file, gated by
+validation on both sides (CLAUDE-01).
+
+### Usage
+
+```bash
+stackmind promote <agent> [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `agent` | TEXT | Yes | Agent whose draft to promote |
+
+### Options
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--project` | `-p` | `.` | Project path |
+
+### Promotion gate
+
+```
+validate draft  →  promote  →  validate canonical
+```
+
+- The draft at `runtime/drafts/<agent>.boot.draft.yaml` is validated against
+  the boot schema **before** the canonical file is touched.
+- On success the draft is written to `runtime/boot/<agent>.boot.yaml` and a
+  `NORMALIZATION` decision entry is recorded in `decisions/` (PLAT-04).
+- If validation fails on either side, the promotion is aborted (or rolled
+  back) and a blocker is written to `inbox/claude/`.
+
+### Examples
+
+```bash
+stackmind promote codex
+stackmind promote gemma --project ./my-project
+```
+
+---
+
+## stackmind lock
+
+Manage the runtime write lock (PLAT-03). The lock serializes canonical writes
+(`runtime/boot/`, `TREE.yaml`) across agent sessions. It is an advisory lock at
+the tooling layer: it lets agents and CI detect contention and refuse to
+proceed.
+
+### Subcommands
+
+```bash
+stackmind lock acquire <agent> [--session-id ID] [--force] [-p PATH]
+stackmind lock release <agent> [--force] [-p PATH]
+stackmind lock status [-p PATH]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `acquire` | Acquire the lock for an agent; refuses if another agent holds it (unless `--force`) |
+| `release` | Release the lock; refuses to release another agent's lock (unless `--force`) |
+| `status` | Show the current lock holder, session, and acquisition time |
+
+The lock file lives at `.sync/runtime/LOCK`:
+
+```yaml
+held_by: claude
+session_id: 30
+acquired_at: 2026-06-10T09:14:00+05:30
+```
+
+`stackmind shutdown` is the canonical mechanism that clears an agent's lock.
+
+### Examples
+
+```bash
+stackmind lock acquire claude --session-id 31
+stackmind lock status
+stackmind lock release claude
+stackmind lock acquire codex --force   # steal a stale lock
+```
+
+---
+
 ## Version
 
 ```bash
 stackmind --version
 ```
-
 Output:
 ```
-stackmind, version 1.0.0
+stackmind, version 1.1.0
 ```
 
 ## Help
@@ -343,6 +503,9 @@ stackmind init --help
 stackmind validate --help
 stackmind doctor --help
 stackmind migrate --help
+stackmind shutdown --help
+stackmind promote --help
+stackmind lock --help
 ```
 
 ---

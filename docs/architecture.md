@@ -22,7 +22,7 @@ stackmind separates the reusable infrastructure from project-specific runtime st
 
 The engine is the stackmind package itself. It provides:
 
-- **CLI commands**: `init`, `validate`, `doctor`, `migrate`
+- **CLI commands**: `init`, `validate`, `doctor`, `migrate`, `shutdown`, `promote`, `lock`
 - **Schemas**: JSON Schema definitions for all YAML files
 - **Templates**: Starter files for new runtimes
 - **Validators**: Four-layer validation logic
@@ -48,7 +48,12 @@ stackmind/
 │   ├── main.py            # Entry point (click)
 │   ├── init.py            # stackmind init
 │   ├── validate.py        # stackmind validate
-│   └── doctor.py          # stackmind doctor
+│   ├── doctor.py          # stackmind doctor
+│   ├── migrate.py         # stackmind migrate
+│   ├── shutdown.py        # stackmind shutdown
+│   ├── promote.py         # stackmind promote (draft → canonical, gated)
+│   ├── lock.py            # stackmind lock (write-lock mechanism)
+│   └── decisions.py       # NORMALIZATION audit-trail entries
 ├── schemas/               # JSON Schema definitions
 │   ├── tree.schema.json   # TREE.yaml validation
 │   ├── boot.schema.json   # Boot snapshot validation
@@ -75,6 +80,7 @@ my-project/
     │
     ├── runtime/           # Runtime state
     │   ├── TREE.yaml      # Team state index (Claude-owned)
+    │   ├── LOCK           # Write lock (when held; serializes canonical writes)
     │   ├── boot/          # Agent boot snapshots
     │   │   ├── claude.boot.yaml
     │   │   ├── codex.boot.yaml
@@ -149,6 +155,11 @@ Workers (Codex, Gemini, Local-LLM)
 4. Templates contain zero operational history
 5. Only Claude writes to `TREE.yaml` and `runtime/boot/`
 6. Workers write drafts to `runtime/drafts/`, never to `runtime/boot/`
+7. Canonical writes are serialized by the `runtime/LOCK` write lock (PLAT-03)
+8. Draft → canonical promotion is validation-gated and recorded as a
+   `NORMALIZATION` decision (CLAUDE-01, PLAT-04)
+9. `TREE.yaml` work-order totals must agree with the `INDEX.yaml` ledger
+   (canonical-drift anchor, PLAT-01)
 
 ## Two Repositories
 
@@ -161,3 +172,19 @@ This separation ensures:
 - Runtime history is independent of code history
 - Agents can be managed separately
 - Compliance and audit trails are preserved
+
+### `.sync-ref` Anchoring (PLAT-05)
+
+Because `.sync/` is git-ignored by the main project repo, its commit state is
+invisible from the main repo's `git status`. To restore a verifiable link, a
+`.sync-ref` file is tracked in the **main** repo containing the last-known-good
+`.sync` commit SHA:
+
+```
+# my-project/.sync-ref (tracked by the project repo)
+ed9d856
+```
+
+`stackmind validate` compares the live `.sync` HEAD against `.sync-ref` and
+warns if they diverge — surfacing unexpected or uncommitted `.sync` commits
+without merging the two repositories.

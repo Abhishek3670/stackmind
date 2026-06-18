@@ -40,6 +40,29 @@ def find_handoff_report(outbox_path: Path) -> Path | None:
     return sorted(handoffs, reverse=True)[0]
 
 
+def unprocessed_inbox_items(sync_path: Path, agent: str) -> list[Path]:
+    """Return inbox messages an agent has not yet processed.
+
+    GEMMA-02: a message is considered processed once it has been moved into
+    ``inbox/<agent>/_read/``. Any file remaining at the top level of
+    ``inbox/<agent>/`` (excluding the ``_read/`` directory and ``.gitkeep``)
+    is an unprocessed item. D024 requires each inbox item to have a documented
+    outcome before a session closes, so these must be drained before shutdown.
+    """
+    inbox = sync_path / "inbox" / agent
+    if not inbox.is_dir():
+        return []
+
+    items: list[Path] = []
+    for entry in inbox.iterdir():
+        if entry.is_dir():
+            continue
+        if entry.name == ".gitkeep":
+            continue
+        items.append(entry)
+    return sorted(items)
+
+
 def archive_handoff(handoff_path: Path, outbox_path: Path) -> None:
     """Move handoff report to _read/ directory."""
     read_dir = outbox_path / "_read"
@@ -71,8 +94,38 @@ def update_tree_status(sync_path: Path, agent: str) -> bool:
     return True
 
 
+def fresh_tree_versions(sync_path: Path) -> tuple[int | None, str | None]:
+    """Re-read TREE.yaml at call time and return its current versions.
+
+    CODEX-01: snapshot writes must use a fresh read of TREE.yaml taken
+    immediately before the write — never a value cached at boot time. The
+    boot-time PEEK of TREE is a read optimization only; using it as the source
+    for a snapshot write captures a value that may have been superseded within
+    the same session window (the canonical drift the boot sequence is meant to
+    prevent).
+
+    Returns:
+        (tree_version, graph_version). Either may be None if TREE.yaml is
+        missing/unreadable or the field is absent.
+    """
+    tree_path = sync_path / "runtime" / "TREE.yaml"
+    if not tree_path.exists():
+        return None, None
+    data = _load_yaml(tree_path)
+    if not isinstance(data, dict):
+        return None, None
+    return data.get("tree_version"), data.get("graph_version")
+
+
 def update_boot_snapshot(sync_path: Path, agent: str) -> bool:
-    """Increment session_count in agent's boot snapshot."""
+    """Persist an agent's boot snapshot at shutdown.
+
+    Increments ``session_count`` and — per CODEX-01 — re-reads TREE.yaml fresh
+    at write time to sync the snapshot's ``tree_version`` and ``graph_version``
+    to the current canonical values. This keeps the snapshot from recording a
+    stale, boot-cached version (CODEX-01) and prevents the snapshot from
+    silently lagging TREE across sessions (GEMMA-01).
+    """
     boot_path = sync_path / "runtime" / "boot" / f"{agent}.boot.yaml"
     if not boot_path.exists():
         return False
@@ -83,6 +136,16 @@ def update_boot_snapshot(sync_path: Path, agent: str) -> bool:
     
     data["session_count"] = data.get("session_count", 0) + 1
     data["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+    # CODEX-01: fresh re-read of TREE.yaml immediately before writing the
+    # snapshot — do not trust any value cached earlier in the session.
+    tree_version, graph_version = fresh_tree_versions(sync_path)
+    if tree_version is not None:
+        data["tree_version"] = tree_version
+    # graph_version syncs to current (including a deliberate null) only when
+    # TREE.yaml was readable; preserve the existing value otherwise.
+    if (sync_path / "runtime" / "TREE.yaml").exists():
+        data["graph_version"] = graph_version
     
     _save_yaml(boot_path, data)
     return True
@@ -129,6 +192,29 @@ def shutdown(project_path: Path, agent: str, force: bool = False) -> bool:
     elif force:
         console.print("[yellow][!] Forcing shutdown without handoff report[/yellow]")
 
+    # GEMMA-02: require a drained inbox before allowing the session to close.
+    # Each inbox item must have a documented outcome (D024); silently leaving
+    # unprocessed messages risks dropping required reviews or directives.
+    pending = unprocessed_inbox_items(sync_path, agent)
+    if pending and not force:
+        console.print(
+            f"[bold red][x] {len(pending)} unprocessed inbox item(s) for "
+            f"'{agent}'[/bold red]"
+        )
+        for item in pending:
+            console.print(f"[dim]  - inbox/{agent}/{item.name}[/dim]")
+        console.print(
+            "\n[yellow]Process each item (move to inbox/"
+            f"{agent}/_read/ with a documented outcome) before shutdown.[/yellow]"
+        )
+        console.print("[dim]Use --force to skip this check (not recommended).[/dim]")
+        return False
+    if pending and force:
+        console.print(
+            f"[yellow][!] Forcing shutdown with {len(pending)} unprocessed "
+            f"inbox item(s)[/yellow]"
+        )
+
     # Update TREE.yaml
     if update_tree_status(sync_path, agent):
         console.print(f"[green][✓] Updated TREE.yaml: {agent} → idle[/green]")
@@ -146,6 +232,31 @@ def shutdown(project_path: Path, agent: str, force: bool = False) -> bool:
     if handoff:
         archive_handoff(handoff, outbox_path)
         console.print(f"[green][✓] Archived handoff to _read/[/green]")
+
+    # Release the write lock (PLAT-03). Shutdown is the canonical mechanism
+    # that clears the lock, enforcing serialized canonical writes across
+    # sessions. Only the holding agent's lock is cleared in the normal flow;
+    # if another agent holds it, surface a warning rather than stealing it.
+    from .lock import read_lock, release_lock
+
+    current_lock = read_lock(sync_path)
+    if current_lock is not None and current_lock.get("held_by") not in (agent, None):
+        if force:
+            release_lock(sync_path, agent, force=True)
+            console.print(
+                f"[yellow][!] Force-released LOCK held by "
+                f"'{current_lock.get('held_by')}'[/yellow]"
+            )
+        else:
+            console.print(
+                f"[yellow][!] LOCK held by '{current_lock.get('held_by')}', "
+                f"not '{agent}' — leaving it in place "
+                f"(use --force to override)[/yellow]"
+            )
+    else:
+        released, _ = release_lock(sync_path, agent, force=force)
+        if released and current_lock is not None:
+            console.print(f"[green][✓] Released write lock[/green]")
 
     console.print(f"\n[bold green]Agent '{agent}' shutdown complete.[/bold green]")
     return True

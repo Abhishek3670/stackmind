@@ -20,5 +20,10 @@ affected_services: []
 root_cause: ""
 fix_verified: false
 
+# ─── Rework Budget ─────────────────────────────────────────
+rework_budget: 2
+rework_count: 0
+blocked_by_rework: false
+
 # ─── Execution Log ─────────────────────────────────────────
 log: []
