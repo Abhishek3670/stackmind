@@ -349,6 +349,9 @@ def validate_protocol(sync_path: Path, agents: list[str], result: ValidationResu
     # Validate the write lock (PLAT-03) integrity
     _validate_lock(sync_path, agents, result)
 
+    # Validate compliance events (LOCK_STOLEN)
+    _validate_compliance_events(sync_path, result)
+
     # CODEX-02: flag untracked paths in the .sync repo as compliance warnings
     _validate_untracked_sync(sync_path, result)
 
@@ -357,6 +360,9 @@ def validate_protocol(sync_path: Path, agents: list[str], result: ValidationResu
 
     # GEMINI-04: require a declared release_target on completion notices
     _validate_completion_notices(sync_path, result)
+
+    # Validate handoff reports (GEMINI-02, LOCAL-LLM-01)
+    _validate_handoff_reports(sync_path, result)
 
 
 # Unanchored work-order reference pattern (for scanning prose/filenames).
@@ -574,6 +580,116 @@ def _validate_lock(sync_path: Path, agents: list[str], result: ValidationResult)
             ),
             path="runtime/LOCK",
         ))
+
+
+def _validate_compliance_events(sync_path: Path, result: ValidationResult) -> None:
+    """Scan for LOCK_STOLEN compliance events and report them."""
+    receipts_dir = sync_path / "runtime" / "receipts"
+    if not receipts_dir.is_dir():
+        return
+
+    for path in sorted(receipts_dir.glob("LOCK_STOLEN_*.yaml")):
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        if not isinstance(data, dict):
+            continue
+
+        if data.get("event_type") == "LOCK_STOLEN":
+            agent = data.get("agent", "unknown")
+            stolen_from = data.get("stolen_from", "unknown")
+            timestamp = data.get("timestamp", "unknown")
+            result.issues.append(Issue(
+                layer="Protocol",
+                severity=Severity.WARN,
+                message=f"LOCK was stolen by '{agent}' from '{stolen_from}' at {timestamp} (LOCK_STOLEN)",
+                path=f"runtime/receipts/{path.name}",
+            ))
+
+
+def _validate_handoff_reports(sync_path: Path, result: ValidationResult) -> None:
+    """Scan for agent handoff reports and validate their contents."""
+    outbox = sync_path / "outbox"
+    if not outbox.is_dir():
+        return
+
+    for agent_dir in outbox.iterdir():
+        if not agent_dir.is_dir():
+            continue
+        agent_name = agent_dir.name
+        
+        # Scan both top-level and archived _read/
+        for search_dir in (agent_dir, agent_dir / "_read"):
+            if not search_dir.is_dir():
+                continue
+            for path in sorted(search_dir.glob("handoff-*.md")):
+                _validate_handoff_file(path, agent_name, result, sync_path)
+            for path in sorted(search_dir.glob("*_session-report.md")):
+                _validate_handoff_file(path, agent_name, result, sync_path)
+
+
+def _validate_handoff_file(path: Path, agent: str, result: ValidationResult, sync_path: Path) -> None:
+    """Validate a single handoff report's content against protocol rules."""
+    try:
+        content = path.read_text(encoding="utf-8")
+    except Exception:
+        return
+
+    completed_text = ""
+    next_tasks_text = ""
+    
+    lines = content.splitlines()
+    current_section = None
+    
+    for line in lines:
+        if "COMPLETED THIS SESSION" in line:
+            current_section = "completed"
+            continue
+        elif "MY NEXT TASKS" in line:
+            current_section = "next_tasks"
+            continue
+        elif any(marker in line for marker in ("MESSAGES", "BLOCKERS", "WAITING ON", "DECISION NEEDED", "next_session_id")):
+            current_section = None
+            continue
+            
+        if current_section == "completed":
+            completed_text += line + "\n"
+        elif current_section == "next_tasks":
+            next_tasks_text += line + "\n"
+
+    # Relative path for reporting issues
+    rel_path = path.relative_to(sync_path).as_posix()
+
+    # GEMINI-02: WO in next tasks must cite assignment source
+    for line in next_tasks_text.splitlines():
+        wo_match = re.search(r"WO-\d{3}", line)
+        if wo_match:
+            wo_id = wo_match.group(0)
+            if "assigned by" not in line.lower():
+                result.issues.append(Issue(
+                    layer="Protocol",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"Handoff report '{path.name}' lists next task {wo_id} "
+                        f"but is missing assignment source (must cite 'assigned by') (GEMINI-02)"
+                    ),
+                    path=rel_path,
+                ))
+
+    # LOCAL-LLM-01: Delegated items in completed section must declare delegating_agent
+    if "delegate" in completed_text.lower() or "delegated" in completed_text.lower():
+        if "delegating_agent:" not in completed_text:
+            result.issues.append(Issue(
+                layer="Protocol",
+                severity=Severity.ERROR,
+                message=(
+                    f"Handoff report '{path.name}' contains delegated tasks in COMPLETED section "
+                    f"but is missing 'delegating_agent:' declaration (LOCAL-LLM-01)"
+                ),
+                path=rel_path,
+            ))
 
 
 # Work order ID pattern

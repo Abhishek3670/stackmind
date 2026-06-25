@@ -299,6 +299,22 @@ class TestUnprocessedInboxGate:
 
         assert shutdown(fresh_project, "claude", force=True) is True
 
+    def test_defer_handles_unprocessed_inbox(self, fresh_project, sync_path):
+        self._add_handoff(sync_path, "claude")
+        self._add_inbox_item(sync_path, "claude", "2026-06-18_review.md")
+
+        assert shutdown(fresh_project, "claude", force=False, defer=True) is True
+
+        # Verify item moved to _deferred
+        deferred_file = sync_path / "inbox" / "claude" / "_deferred" / "2026-06-18_review.md"
+        assert deferred_file.exists()
+
+        # Verify receipt stub written
+        receipts = list((sync_path / "runtime" / "receipts").glob("*_2026-06-18_review.md.receipt.yaml"))
+        assert len(receipts) == 1
+        receipt_data = yaml.safe_load(receipts[0].read_text())
+        assert receipt_data["deferred_by"] == "claude"
+
     def test_shutdown_succeeds_with_drained_inbox(self, fresh_project, sync_path):
         self._add_handoff(sync_path, "claude")
         # No top-level inbox items.

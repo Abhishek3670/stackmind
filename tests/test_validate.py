@@ -196,6 +196,24 @@ class TestProtocolValidation:
         validate_protocol(sync_path, DEFAULT_AGENTS, result)
         assert any("codex" in i.message and "missing from TREE" in i.message for i in result.issues)
 
+    def test_lock_stolen_event_detected(self, sync_path):
+        receipts_dir = sync_path / "runtime" / "receipts"
+        receipts_dir.mkdir(parents=True, exist_ok=True)
+        event_file = receipts_dir / "LOCK_STOLEN_codex_test.yaml"
+        event_data = {
+            "event_type": "LOCK_STOLEN",
+            "agent": "codex",
+            "stolen_from": "claude",
+            "timestamp": "2026-06-25T14:32:08Z",
+        }
+        event_file.write_text(yaml.dump(event_data), encoding="utf-8")
+
+        result = ValidationResult()
+        validate_protocol(sync_path, DEFAULT_AGENTS, result)
+        issues = [i for i in result.issues if "LOCK was stolen" in i.message]
+        assert len(issues) == 1
+        assert issues[0].severity == Severity.WARN
+
 
 # ─── Layer Tests: Boot Integrity ─────────────────────────────
 
@@ -1250,3 +1268,53 @@ class TestSyncRefAnchoring:
         result = validate(fresh_project)
         ref_issues = [i for i in result.issues if ".sync HEAD" in i.message]
         assert len(ref_issues) == 0
+
+
+class TestHandoffValidation:
+    """Tests for GEMINI-02 and LOCAL-LLM-01 handoff report validation."""
+
+    def test_valid_handoff_passes(self, sync_path):
+        agent_dir = sync_path / "outbox" / "claude"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        handoff_file = agent_dir / "handoff-2026-06-25T14-32-08Z.md"
+        handoff_file.write_text(
+            "✅ COMPLETED THIS SESSION (session_completed: 30):\n"
+            "- Worked on planning\n\n"
+            "📋 MY NEXT TASKS (when I resume):\n"
+            "- WO-001 (assigned by Claude, inbox message 2026-06-18) — finish tasks\n",
+            encoding="utf-8"
+        )
+        result = ValidationResult()
+        validate_protocol(sync_path, ["claude"], result)
+        issues = [i for i in result.issues if i.layer == "Protocol"]
+        assert len(issues) == 0
+
+    def test_missing_assignment_source_errors(self, sync_path):
+        agent_dir = sync_path / "outbox" / "claude"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        handoff_file = agent_dir / "handoff-2026-06-25T14-32-08Z.md"
+        handoff_file.write_text(
+            "📋 MY NEXT TASKS (when I resume):\n"
+            "- WO-001 - finish tasks without source\n",
+            encoding="utf-8"
+        )
+        result = ValidationResult()
+        validate_protocol(sync_path, ["claude"], result)
+        issues = [i for i in result.issues if "GEMINI-02" in i.message]
+        assert len(issues) == 1
+        assert issues[0].severity == Severity.ERROR
+
+    def test_missing_delegating_agent_errors(self, sync_path):
+        agent_dir = sync_path / "outbox" / "claude"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        handoff_file = agent_dir / "handoff-2026-06-25T14-32-08Z.md"
+        handoff_file.write_text(
+            "✅ COMPLETED THIS SESSION (session_completed: 30):\n"
+            "- Delegated check to coder\n",
+            encoding="utf-8"
+        )
+        result = ValidationResult()
+        validate_protocol(sync_path, ["claude"], result)
+        issues = [i for i in result.issues if "LOCAL-LLM-01" in i.message]
+        assert len(issues) == 1
+        assert issues[0].severity == Severity.ERROR

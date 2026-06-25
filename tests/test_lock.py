@@ -88,9 +88,19 @@ class TestAcquireLock:
 
     def test_force_acquire_steals_lock(self, sync_path):
         acquire_lock(sync_path, "claude", session_id=1)
-        ok, msg = acquire_lock(sync_path, "codex", session_id=1, force=True)
+        ok, msg = acquire_lock(sync_path, "codex", session_id=2, force=True)
         assert ok
         assert read_lock(sync_path)["held_by"] == "codex"
+
+        # Verify LOCK_STOLEN compliance event was written
+        receipts_dir = sync_path / "runtime" / "receipts"
+        events = list(receipts_dir.glob("LOCK_STOLEN_codex_*.yaml"))
+        assert len(events) == 1
+        event_data = yaml.safe_load(events[0].read_text(encoding="utf-8"))
+        assert event_data["event_type"] == "LOCK_STOLEN"
+        assert event_data["agent"] == "codex"
+        assert event_data["session_id"] == 2
+        assert event_data["stolen_from"] == "claude"
 
     def test_acquire_without_runtime_dir_fails(self, tmp_path):
         ok, msg = acquire_lock(tmp_path / "nope" / ".sync", "claude")

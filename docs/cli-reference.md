@@ -166,6 +166,7 @@ rules introduced to prevent silent canonical drift:
 | Canonical drift | ERROR | `TREE.yaml` work-order totals must match `INDEX.yaml` (the work-order ledger is the external anchor) |
 | Snapshot version lag | WARN | An agent boot snapshot lagging `TREE.yaml` by more than 3 versions signals broken session continuity |
 | LOCK integrity | ERROR / WARN | A malformed `runtime/LOCK` is an error; a lock held by an unknown agent is a warning |
+| LOCK stolen events | WARN | A forced lock acquisition (stealing the lock) logs a `LOCK_STOLEN` compliance event |
 | Untracked `.sync` paths | WARN | Untracked files in the `.sync` git repo (e.g. orphaned review files) are flagged |
 | Review-file bundling | ERROR | A review file referencing more than one work order violates D024 (one review per WO) |
 | Completion `release_target` | ERROR | A work-order completion notice must declare a `release_target` |
@@ -373,13 +374,16 @@ stackmind shutdown <agent> [OPTIONS]
 |--------|-------|---------|-------------|
 | `--project` | `-p` | `.` | Project path |
 | `--force` | | False | Skip handoff/inbox gates (not recommended) |
+| `--defer` | | False | Defer unprocessed inbox items instead of blocking shutdown |
 
 ### Gates enforced
 
 - **Handoff report** must exist in the agent's outbox (unless `--force`).
 - **Inbox drain (GEMMA-02)**: the agent's inbox must contain zero unprocessed
   items (top-level files not yet moved to `_read/`) before the session can
-  close. Each item needs a documented outcome per D024.
+  close. If unprocessed items are present, shutdown is blocked unless:
+  - `--force` is used (bypasses the gate entirely, not recommended)
+  - `--defer` is used (safely moves items to `_deferred/` and writes receipt stubs)
 
 ### Snapshot freshness (CODEX-01)
 
@@ -460,7 +464,7 @@ stackmind lock status [-p PATH]
 
 | Subcommand | Description |
 |------------|-------------|
-| `acquire` | Acquire the lock for an agent; refuses if another agent holds it (unless `--force`) |
+| `acquire` | Acquire the lock for an agent; refuses if another agent holds it (using `--force` steals the lock and logs a `LOCK_STOLEN` compliance event) |
 | `release` | Release the lock; refuses to release another agent's lock (unless `--force`) |
 | `status` | Show the current lock holder, session, and acquisition time |
 

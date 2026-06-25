@@ -20,9 +20,9 @@ All agents must follow this boot sequence:
 ```
 0. READ  AGENTS.md (project root)              ← Universal rules (FIRST)
 1. READ  runtime/boot/<self>.boot.yaml          ← Resume point (~2KB)
-2. PEEK  runtime/TREE.yaml tree_version         ← Skip if matches snapshot
+2. PEEK  runtime/TREE.yaml tree_version (also referred to as TREE_SIG) ← Sequential integer; skip if matches snapshot
 3. CHECK PROTOCOL_DIGEST.hash                   ← Skip if matches snapshot
-4. CHECK graph_version (D023.3)                 ← SHA-256 of GRAPH_REPORT.md
+4. CHECK graph_version (also referred to as GRAPH_SIG, D023.3)      ← SHA-256 of graphify-out/GRAPH_REPORT.md; skip if matches snapshot
    IF matches snapshot → skip graph
    IF mismatch → read relevant sections only
 5. CHECK unread_inbox_count                     ← Skip if 0
@@ -30,6 +30,12 @@ All agents must follow this boot sequence:
 7. READ  assigned work orders from ACTIVE/      ← Read-only for workers
 8. RESUME from next_action in boot snapshot
 ```
+
+> **Note:** `tree_version` (TREE_SIG) and `graph_version` (GRAPH_SIG) are two
+> distinct fields that coexist by design — not a naming inconsistency.
+> - `tree_version` (TREE_SIG) is the sequential integer counter in `TREE.yaml` (present since v1.0.0) incremented only on structural/schema changes of the TREE.
+> - `graph_version` (GRAPH_SIG) is the SHA-256 hash of `graphify-out/GRAPH_REPORT.md` (present since v1.1.0 per D023.3) tracking graph schema/state changes.
+> The boot sequence checks both independently because they track different artifacts at different granularities.
 
 ### Boot Optimization Impact
 
@@ -62,23 +68,27 @@ Every session MUST end with this exact block:
 ═══════════════════════════════════════════════════════
 📤 HANDOFF REPORT — <Agent Name>
 ═══════════════════════════════════════════════════════
-✅ COMPLETED THIS SESSION:
-- [what you did]
-
-📋 MY NEXT TASKS (when I resume):
-- [what to do next]
-
-📨 MESSAGES TO DISPATCH:
-- → [Agent]: [what you need / sending]
-
-🚫 BLOCKERS:
-- [blocking issues, or "None"]
-
-⏳ WAITING ON:
-- [dependencies on others, or "Nothing"]
-
-💡 DECISION NEEDED (from Claude or Top Manager):
-- [decisions needed, or "None"]
+│✅ COMPLETED THIS SESSION (session_completed: N):
+│- [what you did; delegated actions must cite delegating_agent]
+│
+│📋 MY NEXT TASKS (when I resume):
+│- WO-XXX (assigned by <Agent>, <source>) — [description]
+│- Only currently assigned WOs or explicit inbox directives
+│
+│📨 MESSAGES WRITTEN THIS SESSION (PENDING READ BY RECIPIENT):
+│- → [Agent]: [what you need / sending]
+│  unread_inbox_count from TREE.yaml: [N]
+│
+│🚫 BLOCKERS:
+│- [blocking issues, or "None"]
+│
+│⏳ WAITING ON:
+│- [dependencies on others, or "Nothing"]
+│
+│💡 DECISION NEEDED (from Claude or Top Manager):
+│- [decisions needed, or "None"]
+│
+│next_session_id: N+1
 ═══════════════════════════════════════════════════════
 ```
 
@@ -112,6 +122,7 @@ Every session MUST end with this exact block:
 | Mark complete | Claude |
 | Read assigned work order | Any agent (read-only) |
 | Edit work order files | NEVER (workers) |
+| Self-assign WOs | NEVER (workers) — see GEMINI-02 in AGENTS.md |
 
 ### Work Order Completion Rules (D024)
 
@@ -155,6 +166,14 @@ timestamp: <ISO 8601>
 - Non-compliant agents receive no new work
 - CEO is notified automatically
 
+### Environment Blocker Classification (GEMINI-01)
+
+A broken local test environment MUST be classified as BLOCKED with a formal
+BUGFIX work order. Continuing to ship implementation changes without local
+verification is prohibited. CI-only verification (when local tests are
+unavailable) requires an explicit Decision entry from the architect role
+documenting the exception. "Doesn't block the build" is not sufficient.
+
 ## Inbox SLA Rules
 
 - Directives must be acknowledged and started within the same session
@@ -168,7 +187,7 @@ gaps where an agent could pass its own boot checks while being silently wrong
 about shared state. The single root principle: **every canonical write must be
 anchored to an external source of truth and serialized.**
 
-### Write Lock (PLAT-03)
+### Write Lock & Serialization (PLAT-03)
 
 Canonical writes (`runtime/boot/`, `TREE.yaml`) are serialized by an advisory
 write lock at `.sync/runtime/LOCK`:
@@ -182,6 +201,7 @@ acquired_at: 2026-06-10T09:14:00+05:30
 - `stackmind lock acquire <agent>` — refuses if another agent holds the lock.
 - `stackmind lock release <agent>` / `stackmind shutdown` — clears the lock.
 - `stackmind validate` flags a malformed lock (ERROR) or an unknown holder (WARN).
+- **Lock Theft Alert**: A forced lock acquisition (using `--force` to steal a lock held by another agent) immediately writes a `LOCK_STOLEN` compliance event under `runtime/receipts/`. The validator scans for these events and flags them as warnings to notify operators of potential agent collisions or stuck processes.
 
 ### Fresh Snapshot Writes (CODEX-01)
 
@@ -190,11 +210,23 @@ snapshot and syncs `tree_version`/`graph_version` to the current canonical
 values — never a value cached earlier in the session. This prevents stale
 version writes and keeps snapshots from silently lagging TREE (GEMMA-01).
 
-### Inbox Drain Gate (GEMMA-02)
+### Inbox Drain & Deferral Gate (GEMMA-02)
 
 `stackmind shutdown` refuses to close a session while the agent's inbox has
-unprocessed items (top-level files not yet moved to `_read/`). Each item must
-have a documented outcome per D024.
+unprocessed items (top-level files not yet moved to `_read/`). This ensures
+critical reviews (D024) or directives are not ignored.
+- **Production Exemption (Deferral)**: If unprocessed items arrive late or cannot be addressed in the current session, the agent can use `stackmind shutdown --defer`. This moves the pending items to `_deferred/` and writes a signed receipt stub, allowing shutdown to complete safely without resorting to a brute-force bypass.
+
+### CI/CD Pipeline Integration (Production Check)
+
+In production repositories, `stackmind validate` should be integrated as a mandatory pre-commit hook or Pull Request check:
+1. **Canonical Alignment**: Ensure `.sync-ref` matches the live `.sync` HEAD to detect uncommitted or out-of-order mutations before merging code.
+2. **Structural Health**: Blocks PR merges if any schema violations, total mismatches between `TREE.yaml` and `INDEX.yaml`, or unreviewed code requests exist in the sync repository.
+
+### Infinite Loop & Resource Safeguards (Ethical Containment)
+
+To prevent resource exhaustion (e.g. infinite re-read loops or token-burning cycles due to version mismatch):
+- Agents must monitor their re-read count. If an agent detects more than 3 consecutive boot re-reads or validation failures in a single session block, it must immediately abort its loop, write a blocker report to its outbox, and halt execution for human review.
 
 ### Promotion Gate (CLAUDE-01)
 
@@ -318,10 +350,14 @@ undone with a simple `git checkout` or `Ctrl+Z`.
 
 1. **BACKUP** — Copy `.git/` or archive target files
 2. **VERIFY** — `git status` clean, record commit count, confirm targets
-3. **ESCALATE** — CEO approval required (or Claude with documented P0 rationale)
+3. **ESCALATE** — CEO approval required (representing the **Human Operator / Custodian** oversight gate; or Claude with documented P0 architectural rationale if CEO is unavailable)
 4. **EXECUTE** — Run the single command
 5. **VALIDATE** — Commit count matches, working tree intact
 6. **ROLLBACK** (if validation fails) — Restore from backup immediately
+
+### Ethical Custody & Human Oversight
+
+To protect the integrity of the codebase and prevent catastrophic source code loss, autonomous agents are prohibited from executing destructive commands unilaterally. The CEO escalation step acts as a mandatory human verification check, ensuring that no historical rewrite or bulk deletion is initiated without explicit developer consent and verification of backups.
 
 ### Covered Commands
 

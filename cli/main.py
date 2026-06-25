@@ -176,7 +176,8 @@ def migrate(project_path: str, target_version: str | None, check: bool, rollback
 @click.argument("agent", type=str)
 @click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
 @click.option("--force", is_flag=True, help="Skip handoff validation (not recommended)")
-def shutdown(agent: str, project_path: str, force: bool):
+@click.option("--defer", is_flag=True, help="Defer unprocessed inbox items instead of blocking shutdown")
+def shutdown(agent: str, project_path: str, force: bool, defer: bool):
     """Shutdown an agent session with handoff validation.
 
     Validates that the agent has written a handoff report before
@@ -196,6 +197,7 @@ def shutdown(agent: str, project_path: str, force: bool):
         project_path=Path(project_path),
         agent=agent,
         force=force,
+        defer=defer,
     )
     if not success:
         raise SystemExit(1)

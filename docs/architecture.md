@@ -125,27 +125,41 @@ my-project/
 
 ## Authority Model
 
+To ensure operational safety, accountability, and clear boundaries in production, stackmind utilizes a hierarchical role-based authority model.
+
 ```
-CEO (Top Manager)
-    ↓ Product scope, priorities, releases
-Claude (Senior Architect)
-    ↓ Architecture, planning, work orders
-Gemma (QA Lead)
-    ↓ Quality gates, approvals
-Workers (Codex, Gemini, Local-LLM)
-    → Implementation only
+CEO (Top Manager / Human Custodian)
+    ↓ Product scope, priorities, releases, policy overrides
+Claude (Senior Architect Role)
+    ↓ Architecture, planning, work orders, runtime state promotions
+Gemma (QA Lead Role)
+    ↓ Quality gates, validation checks, approvals
+Workers (Codex, Gemini, Local-LLM Roles)
+    → Implementation only (no state mutation authority)
 ```
+
+### Logical Role Abstraction (Production Principle)
+
+In production deployments, the agent names (e.g., Claude, Gemma, Codex) represent **logical execution roles**, not hardcoded AI model instances. 
+- Any role may be fulfilled by different model sizes, specific fine-tuned endpoints, API routers, or human operators as required by project scale, budget, and licensing constraints.
+- Crucially, the **CEO** role represents the ultimate source of truth and authority, which is typically occupied or directly supervised by a **Human Operator (Custodian)**.
+
+### Ethical Safeguards & Accountability
+
+1. **Human Supremacy & Custody**: Human operators maintain ultimate custody of both the project and the `.sync` repositories. Human supervision overrides any autonomous actions, and tools such as `--force` options or manual lock releases exist so humans can resolve deadlocks or unexpected agent behavior.
+2. **Audit Trails & Decision Transparency**: All modifications to canonical runtime files (`TREE.yaml`, `boot.yaml`) are strictly recorded in the `decisions/` folder (such as `NORMALIZATION` decision events). No state changes may occur silently. Every session report and git commit in `.sync` is attributed to a specific executing role.
+3. **Double-Gated Work Flow**: A worker cannot unilaterally push code or close work orders. Every completion requires a peer review (QA gate) and an architectural promotion check, preventing unvetted code execution.
 
 ### Role Ownership
 
-| Role | Owns |
-|------|------|
-| CEO | Product scope, priorities, releases |
-| Claude | Architecture, planning, work orders, runtime state |
-| Gemma | Quality gates, code review, approvals |
-| Codex | Backend implementation |
-| Gemini | Frontend implementation |
-| Local-LLM | GitOps, CI/CD, releases |
+| Role | Operational Scope & Ownership | Accountability & Ethics Guardrails |
+|------|-------------------------------|------------------------------------|
+| **CEO** | Product scope, priorities, release scheduling, and policy overrides. | Ultimate approval authority. Represents human oversight/custodian gate. |
+| **Claude** | Architecture, planning, work order creation, and runtime state promotions. | Must document and log all structural normalization actions as decisions. |
+| **Gemma** | Quality gates, test verification, reviews, and work order approvals. | Enforces strict validation layers; blocks non-compliant or unvetted work. |
+| **Codex** | Backend code implementation and unit testing. | Restricted to local implementation; cannot modify canonical state directly. |
+| **Gemini** | Frontend code implementation and UI testing. | Restricted to local implementation; cannot modify canonical state directly. |
+| **Local-LLM** | GitOps, CI/CD pipelines, repository sync, and release artifacts. | Accountable for maintaining consistent commit tracking and sync reference links. |
 
 ## Key Invariants
 
