@@ -45,9 +45,10 @@ def unprocessed_inbox_items(sync_path: Path, agent: str) -> list[Path]:
 
     GEMMA-02: a message is considered processed once it has been moved into
     ``inbox/<agent>/_read/``. Any file remaining at the top level of
-    ``inbox/<agent>/`` (excluding the ``_read/`` directory and ``.gitkeep``)
-    is an unprocessed item. D024 requires each inbox item to have a documented
-    outcome before a session closes, so these must be drained before shutdown.
+    ``inbox/<agent>/`` (excluding the ``_read/`` directory, the
+    ``_deferred/`` directory, and ``.gitkeep``) is an unprocessed item.
+    D024 requires each inbox item to have a documented outcome before a
+    session closes, so these must be drained before shutdown.
     """
     inbox = sync_path / "inbox" / agent
     if not inbox.is_dir():
@@ -61,6 +62,52 @@ def unprocessed_inbox_items(sync_path: Path, agent: str) -> list[Path]:
             continue
         items.append(entry)
     return sorted(items)
+
+
+def defer_inbox_items(sync_path: Path, agent: str, items: list[Path]) -> int:
+    """Move unprocessed inbox items to _deferred/ and write receipt stubs.
+
+    Each item is moved from ``inbox/<agent>/`` to ``inbox/<agent>/_deferred/``,
+    and a receipt stub is written at
+    ``runtime/receipts/<agent>_<item_name>.receipt.yaml`` with fields:
+    ``deferred_by``, ``original_path``, ``deferred_at``, ``reason``.
+
+    Args:
+        sync_path: Path to the .sync/ directory.
+        agent: Name of the agent whose items are being deferred.
+        items: List of unprocessed inbox item paths to defer.
+
+    Returns:
+        Number of items deferred.
+    """
+    deferred_dir = sync_path / "inbox" / agent / "_deferred"
+    receipts_dir = sync_path / "runtime" / "receipts"
+    deferred_dir.mkdir(parents=True, exist_ok=True)
+    receipts_dir.mkdir(parents=True, exist_ok=True)
+
+    count = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for item in items:
+        # Sanitize item name for receipt filename
+        item_name = item.name
+        receipt_name = f"{agent}_{item_name}.receipt.yaml"
+
+        # Move item to _deferred/
+        dest = deferred_dir / item_name
+        shutil.move(str(item), str(dest))
+
+        # Write receipt stub
+        receipt_data = {
+            "deferred_by": agent,
+            "original_path": f"inbox/{agent}/{item_name}",
+            "deferred_at": now_iso,
+            "reason": "Deferred at shutdown via --defer flag",
+        }
+        _save_yaml(receipts_dir / receipt_name, receipt_data)
+        count += 1
+
+    return count
 
 
 def archive_handoff(handoff_path: Path, outbox_path: Path) -> None:
@@ -151,13 +198,14 @@ def update_boot_snapshot(sync_path: Path, agent: str) -> bool:
     return True
 
 
-def shutdown(project_path: Path, agent: str, force: bool = False) -> bool:
+def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = False) -> bool:
     """Shutdown an agent session with handoff validation.
 
     Args:
         project_path: Root of the project containing .sync/.
         agent: Name of the agent to shutdown.
         force: If True, skip handoff validation (not recommended).
+        defer: If True, defer unprocessed inbox items instead of blocking shutdown.
 
     Returns:
         True if shutdown successful, False otherwise.
@@ -197,19 +245,25 @@ def shutdown(project_path: Path, agent: str, force: bool = False) -> bool:
     # unprocessed messages risks dropping required reviews or directives.
     pending = unprocessed_inbox_items(sync_path, agent)
     if pending and not force:
-        console.print(
-            f"[bold red][x] {len(pending)} unprocessed inbox item(s) for "
-            f"'{agent}'[/bold red]"
-        )
-        for item in pending:
-            console.print(f"[dim]  - inbox/{agent}/{item.name}[/dim]")
-        console.print(
-            "\n[yellow]Process each item (move to inbox/"
-            f"{agent}/_read/ with a documented outcome) before shutdown.[/yellow]"
-        )
-        console.print("[dim]Use --force to skip this check (not recommended).[/dim]")
-        return False
-    if pending and force:
+        if defer:
+            deferred_count = defer_inbox_items(sync_path, agent, pending)
+            console.print(
+                f"[green][✓] Deferred {deferred_count} unprocessed inbox item(s)[/green]"
+            )
+        else:
+            console.print(
+                f"[bold red][x] {len(pending)} unprocessed inbox item(s) for "
+                f"'{agent}'[/bold red]"
+            )
+            for item in pending:
+                console.print(f"[dim]  - inbox/{agent}/{item.name}[/dim]")
+            console.print(
+                "\n[yellow]Process each item (move to inbox/"
+                f"{agent}/_read/ with a documented outcome) before shutdown.[/yellow]"
+            )
+            console.print("[dim]Use --force or --defer to handle this.[/dim]")
+            return False
+    elif pending and force:
         console.print(
             f"[yellow][!] Forcing shutdown with {len(pending)} unprocessed "
             f"inbox item(s)[/yellow]"

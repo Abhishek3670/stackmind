@@ -77,11 +77,13 @@ stackmind migrate --to 1.1.0           # Migrate to specific version
 ```bash
 stackmind shutdown claude              # Shutdown with handoff + inbox-drain validation
 stackmind shutdown codex --force       # Force shutdown (not recommended)
+stackmind shutdown gemini --defer      # Defer unprocessed inbox items to _deferred/
 ```
 
 Shutdown enforces a handoff report and a drained inbox (zero unprocessed
 items), persists a freshly re-read boot snapshot, and releases the agent's
-write lock.
+write lock. When unprocessed items are present, they can be safely deferred
+using `--defer` instead of bypassing verification with `--force`.
 
 ### Promote Options
 

@@ -85,15 +85,21 @@ def acquire_lock(
         return False, f"runtime directory not found at {runtime_dir}"
 
     existing = read_lock(sync_path)
+    stolen = False
+    previous_holder = None
     if existing is not None:
         holder = existing.get("held_by")
-        if holder != agent and not force:
-            return (
-                False,
-                f"LOCK held by '{holder}' (session {existing.get('session_id')}, "
-                f"acquired {existing.get('acquired_at')}). "
-                f"Use --force to override or wait for '{holder}' to shut down.",
-            )
+        if holder != agent:
+            if not force:
+                return (
+                    False,
+                    f"LOCK held by '{holder}' (session {existing.get('session_id')}, "
+                    f"acquired {existing.get('acquired_at')}). "
+                    f"Use --force to override or wait for '{holder}' to shut down.",
+                )
+            else:
+                stolen = True
+                previous_holder = holder
 
     lock_data: dict = {
         "held_by": agent,
@@ -105,8 +111,24 @@ def acquire_lock(
         encoding="utf-8",
     )
 
-    if existing is not None and existing.get("held_by") != agent:
-        return True, f"LOCK forcibly acquired by '{agent}' (was held by '{existing.get('held_by')}')"
+    if stolen:
+        receipts_dir = sync_path / "runtime" / "receipts"
+        receipts_dir.mkdir(parents=True, exist_ok=True)
+        timestamp_str = datetime.now(timezone.utc).isoformat()
+        filename_timestamp = timestamp_str.replace(":", "-").replace(".", "-")
+        event_file = receipts_dir / f"LOCK_STOLEN_{agent}_{filename_timestamp}.yaml"
+        event_data = {
+            "event_type": "LOCK_STOLEN",
+            "agent": agent,
+            "session_id": session_id,
+            "stolen_from": previous_holder,
+            "timestamp": timestamp_str,
+        }
+        event_file.write_text(
+            yaml.dump(event_data, default_flow_style=False, sort_keys=False),
+            encoding="utf-8",
+        )
+        return True, f"LOCK forcibly acquired by '{agent}' (was held by '{previous_holder}')"
     return True, f"LOCK acquired by '{agent}'"
 
 
