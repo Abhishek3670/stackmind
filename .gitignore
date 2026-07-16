@@ -3,3 +3,11 @@ scratch/
 cli/_pycache__/
 cli/__pycache__/*
 tests/__pycache__/
+
+# SKC planning / research docs — not for commit
+docs/SKC-STATUS.md
+docs/SKC-IMPLEMENTATION-PLAN.md
+docs/HARNESS-ENGINEERING-EVALUATION.md
+docs/STACKMIND_ARCHITECTURE.md
+docs/rfcs/
+docs/SMPOC/
