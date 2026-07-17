@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from .graph import graph
 
 
 @click.group()
@@ -338,5 +339,9 @@ def lock_status(project_path: str):
     )
 
 
+cli.add_command(graph)
+
 if __name__ == "__main__":
     cli()
+
+

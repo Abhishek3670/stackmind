@@ -8,6 +8,7 @@ AST fallback with the same deterministic output contract.
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -231,7 +232,7 @@ class _ParserVisitor(ast.NodeVisitor):
             module_name=self.module_name,
             signature=_signature(node, is_async=is_async),
             location=_location(node),
-            content_hash=_content_hash(ast.get_source_segment(self.source, node) or ast.dump(node)),
+            content_hash=_symbol_content_hash(node),
             owner_qualified_name=None if self.stack[-1][0] == "Module" else self.stack[-1][1],
         )
 
@@ -266,6 +267,13 @@ def _signature(node: ast.AST, *, is_async: bool = False) -> str:
         args.append(f"**{node.args.kwarg.arg}")
     prefix = "async def" if is_async else "def"
     return f"{prefix} {node.name}({', '.join(args)})"
+
+
+def _symbol_content_hash(node: ast.AST) -> str:
+    normalized = copy.deepcopy(node)
+    if isinstance(normalized, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        normalized.name = "__symbol__"
+    return _content_hash(ast.dump(normalized, include_attributes=False))
 
 
 def _call_name(node: ast.AST) -> str | None:

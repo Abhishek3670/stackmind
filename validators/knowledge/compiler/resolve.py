@@ -293,6 +293,8 @@ def _sync_ref(project_path: Path) -> str | None:
 
 
 def _git_value(project_path: Path, args: list[str]) -> str | None:
+    if not (project_path / ".git").exists():
+        return None
     try:
         completed = subprocess.run(
             ["git", *args],
@@ -344,3 +346,4 @@ def _resolve_with_jedi(
         if match is not None:
             return match
     return None
+

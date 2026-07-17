@@ -15,3 +15,5 @@ docs/SMPOC/
 
 .sync/
 
+.pytest-tmp/
+

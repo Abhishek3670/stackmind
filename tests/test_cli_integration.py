@@ -111,6 +111,34 @@ class TestDoctorCLI:
         assert "FAIL" in result.output
 
 
+# ─── Graph Commands ──────────────────────────────────────────
+
+
+class TestGraphCLI:
+    def test_graph_build_stats_and_versions(self, runner, tmp_project):
+        runner.invoke(cli, ['init', tmp_project, '--no-git'])
+        Path(tmp_project, 'app.py').write_text(
+            'def later():\n    return 1\n\n\ndef main():\n    return later()\n',
+            encoding='utf-8',
+        )
+
+        build = runner.invoke(cli, ['graph', 'build', '--project', tmp_project])
+        assert build.exit_code == 0
+        assert (Path(tmp_project) / '.sync' / 'knowledge' / 'cache' / 'reverse_index').exists()
+
+        stats = runner.invoke(cli, ['graph', 'stats', '--project', tmp_project])
+        assert stats.exit_code == 0
+        assert 'nodes:' in stats.output
+        assert 'edges:' in stats.output
+        assert 'revisions:' in stats.output
+
+        versions = runner.invoke(cli, ['graph', 'versions', '--project', tmp_project])
+        assert versions.exit_code == 0
+        assert 'reverse_index: reverse-index-1' in versions.output
+        assert 'search: search-1' in versions.output
+        assert 'metrics: metrics-1' in versions.output
+
+
 # ─── Edge Cases ──────────────────────────────────────────────
 
 
@@ -127,3 +155,4 @@ class TestEdgeCases:
         tree.write_text("{{{{invalid yaml", encoding="utf-8")
         result = runner.invoke(cli, ["validate", tmp_project])
         assert result.exit_code != 0
+
