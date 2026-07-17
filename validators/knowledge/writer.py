@@ -49,9 +49,15 @@ class KnowledgeWriter:
 
     def write(self, ir: CompilerIR, *, built_at: str = "") -> KnowledgeWriteResult:
         sync_path = self.project_path / ".sync"
-        ok, message = acquire_lock(sync_path, self.agent, session_id="storage")
-        if not ok:
-            raise RuntimeError(message)
+        external = not (sync_path / "runtime").exists()
+
+        lock_acquired = False
+        if not external:
+            ok, message = acquire_lock(sync_path, self.agent, session_id="storage")
+            if not ok:
+                raise RuntimeError(message)
+            lock_acquired = True
+
         try:
             written: list[Path] = []
             unchanged: list[Path] = []
@@ -67,7 +73,8 @@ class KnowledgeWriter:
             written.append(path)
             return KnowledgeWriteResult(revision_id, path, tuple(written), tuple(unchanged))
         finally:
-            release_lock(sync_path, self.agent)
+            if lock_acquired:
+                release_lock(sync_path, self.agent)
 
 
 def write_knowledge(

@@ -56,11 +56,13 @@ def build(project_path: str, agent: str):
 
     console = Console()
     project = Path(project_path).resolve()
+    external = not (project / ".sync" / "runtime").exists()
 
     ir = compile_project(project, agent=agent)
     write_result = write_knowledge(project, ir, agent=agent)
     projection_results = build_projections(project)
-    enqueue_stale_nodes(project, agent=agent)
+    if not external:
+        enqueue_stale_nodes(project, agent=agent)
     stats = _graph_stats(project)
 
     console.print('[bold green][PASS] Knowledge store built[/bold green]')

@@ -214,6 +214,9 @@ class SymbolRegistry:
         return self.upsert(record)
 
     def _require_write_lock(self) -> None:
+        # External projects (no runtime dir) skip lock enforcement
+        if not (self.sync_path / "runtime").exists():
+            return
         lock = read_lock(self.sync_path)
         if lock is None or lock.get("held_by") != self.agent:
             raise RegistryLockError(

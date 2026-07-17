@@ -32,11 +32,16 @@ def compile_project(
     """
     project_path = project_path.resolve()
     parsed_files = parse_project(project_path)
+
+    sync_dir = project_path / ".sync"
+    external_project = not (sync_dir / "runtime").exists()
+
+    # External projects: skip locking (no runtime dir) but still write registry
     registry = SymbolRegistry(project_path, agent=agent)
 
     lock_acquired = False
-    if write_registry:
-        ok, message = acquire_lock(project_path / ".sync", agent, session_id="compiler")
+    if write_registry and not external_project:
+        ok, message = acquire_lock(sync_dir, agent, session_id="compiler")
         if not ok:
             raise RuntimeError(message)
         lock_acquired = True

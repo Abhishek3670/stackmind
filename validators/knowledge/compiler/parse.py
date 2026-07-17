@@ -68,7 +68,7 @@ class ParsedFile:
 
 def discover_python_files(root: Path) -> list[Path]:
     """Return project Python files in deterministic order."""
-    excluded = {".git", ".sync", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+    excluded = {".git", ".sync", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "venv", ".venv", "env", ".env", "node_modules", ".tox", "site-packages"}
     files: list[Path] = []
     for path in root.rglob("*.py"):
         if any(part in excluded for part in path.relative_to(root).parts):
