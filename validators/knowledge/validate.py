@@ -245,6 +245,7 @@ def _validate_storage(
     root = sync_path / "knowledge"
     nodes: dict[str, tuple[Path, dict[str, Any]]] = {}
     schema = _load_schema(project_path, "node.schema.json")
+    ai_schema = _load_schema(project_path, "ai-block.schema.json")
     for path in sorted((root / "nodes").glob("*/*/*.json")) if (root / "nodes").exists() else []:
         try:
             node = json.loads(path.read_text(encoding="utf-8"))
@@ -252,6 +253,7 @@ def _validate_storage(
             result.issues.append(KnowledgeIssue(f"Invalid node JSON: {exc}", _rel(path, sync_path)))
             continue
         _schema_issues(schema, node, path, sync_path, "node", result)
+        _schema_issues(ai_schema, node.get("ai", {}), path, sync_path, "ai", result)
         _canonical_issue(path, node, sync_path, result)
         node_id = node.get("node_id")
         if isinstance(node_id, str):
