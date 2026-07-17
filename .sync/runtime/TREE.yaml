@@ -1,36 +1,36 @@
 schema_version: 1
-tree_version: 6
+tree_version: 7
 graph_version: null
-last_updated: "2026-07-17T17:16:00+05:30"
+last_updated: "2026-07-17T18:12:00+05:30"
 
-current_phase: "PHASE_4"
+current_phase: "PHASE_5"
 phase_status: "ACTIVE"
 release: "2.0.0"
 
 work_orders:
   total_active: 1
   total_blocked: 0
-  total_completed: 4
+  total_completed: 5
   index_file: "work-orders/INDEX.yaml"
 
 agents:
   claude:
     status: "active"
     session_count: 2
-    last_task: "WO-004 approved; WO-005 created and assigned to Codex"
-    next_task: "Await Codex WO-005 delivery (Phase 5 Incremental Compiler)"
+    last_task: "WO-005 approved; WO-006 created and assigned to Codex"
+    next_task: "Await Codex WO-006 delivery (Phase 6 Background Intelligence)"
     blockers: []
     boot_version: "v1.0"
     assigned_work_orders: []
 
   codex:
     status: "assigned"
-    session_count: 4
-    last_task: "WO-004 COMPLETED — Projection Engine (Phase 4)"
-    next_task: "WO-005: Incremental Compiler + Rename Detection (Phase 5)"
+    session_count: 5
+    last_task: "WO-005 COMPLETED — Incremental Compiler + Rename Detection (Phase 5)"
+    next_task: "WO-006: Background Intelligence — Async LLM Enrichment (Phase 6)"
     blockers: []
     boot_version: "v1.0"
-    assigned_work_orders: ["WO-005"]
+    assigned_work_orders: ["WO-006"]
 
   gemini:
     status: "idle"
@@ -43,8 +43,8 @@ agents:
 
   gemma:
     status: "idle"
-    session_count: 4
-    last_task: "WO-004 re-review — APPROVED"
+    session_count: 5
+    last_task: "WO-005 re-review — APPROVED"
     next_task: "Await next review assignment"
     blockers: []
     boot_version: "v1.0"

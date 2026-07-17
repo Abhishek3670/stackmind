@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-07-17T17:16:00+05:30"
+last_updated: "2026-07-17T18:12:00+05:30"
 updated_by: "claude"
 orders:
   - id: "WO-001"
@@ -49,7 +49,7 @@ orders:
   - id: "WO-005"
     type: FEATURE
     title: "Incremental Compiler + Rename Detection (Phase 5)"
-    status: ACTIVE
+    status: COMPLETED
     priority: P1
     assigned_agents: ["codex"]
     dependencies: ["WO-004"]
@@ -57,7 +57,18 @@ orders:
       type: "module"
       path: "validators/knowledge/compiler/incremental.py"
       description: "Incremental compiler with content-hash dirty detection, rename/move detection, and file watcher"
-next_id: 6
+  - id: "WO-006"
+    type: FEATURE
+    title: "Background Intelligence — Async LLM Enrichment (Phase 6)"
+    status: ACTIVE
+    priority: P2
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/enricher.py"
+      description: "Async LLM enrichment engine with queue, cost caps, privacy modes, and crash safety"
+next_id: 7
 total_active: 1
-total_completed: 4
+total_completed: 5
 total_blocked: 0
