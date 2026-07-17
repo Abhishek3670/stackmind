@@ -16,7 +16,7 @@ orders:
   - id: "WO-002"
     type: FEATURE
     title: "Compiler Frontend — Deterministic Source-to-IR (Phase 2)"
-    status: ACTIVE
+    status: COMPLETED
     priority: P0
     assigned_agents: ["codex"]
     dependencies: ["WO-001"]
@@ -27,8 +27,8 @@ orders:
   - id: "WO-003"
     type: FEATURE
     title: "Storage Layer — Persist IR as Sharded Deterministic JSON (Phase 3)"
-    status: BLOCKED
-    priority: P1
+    status: ACTIVE
+    priority: P0
     assigned_agents: ["codex"]
     dependencies: ["WO-002"]
     deliverable:
@@ -37,5 +37,5 @@ orders:
       description: "Sharded, deterministic JSON storage for IR nodes and revisions with atomic writes"
 next_id: 4
 total_active: 1
-total_completed: 1
-total_blocked: 1
+total_completed: 2
+total_blocked: 0
