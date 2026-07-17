@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-07-17T16:24:00+05:30"
+last_updated: "2026-07-17T17:16:00+05:30"
 updated_by: "claude"
 orders:
   - id: "WO-001"
@@ -38,7 +38,7 @@ orders:
   - id: "WO-004"
     type: FEATURE
     title: "Projection Engine — Derived Projections from IR (Phase 4)"
-    status: ACTIVE
+    status: COMPLETED
     priority: P1
     assigned_agents: ["codex"]
     dependencies: ["WO-003"]
@@ -46,7 +46,18 @@ orders:
       type: "module"
       path: "validators/knowledge/projections/"
       description: "Projection engine: reverse index, search, metrics + CLI graph commands"
-next_id: 5
+  - id: "WO-005"
+    type: FEATURE
+    title: "Incremental Compiler + Rename Detection (Phase 5)"
+    status: ACTIVE
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/incremental.py"
+      description: "Incremental compiler with content-hash dirty detection, rename/move detection, and file watcher"
+next_id: 6
 total_active: 1
-total_completed: 3
+total_completed: 4
 total_blocked: 0
