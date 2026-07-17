@@ -1,36 +1,36 @@
 schema_version: 1
-tree_version: 4
+tree_version: 5
 graph_version: null
-last_updated: "2026-07-17T02:30:00+05:30"
+last_updated: "2026-07-17T16:24:00+05:30"
 
-current_phase: "PHASE_2"
+current_phase: "PHASE_3"
 phase_status: "ACTIVE"
 release: "2.0.0"
 
 work_orders:
   total_active: 1
   total_blocked: 0
-  total_completed: 2
+  total_completed: 3
   index_file: "work-orders/INDEX.yaml"
 
 agents:
   claude:
     status: "active"
     session_count: 2
-    last_task: "WO-002 approved; WO-003 unblocked and assigned to Codex"
-    next_task: "Await Codex WO-003 delivery (Phase 3 Storage Layer)"
+    last_task: "WO-003 approved; WO-004 created and assigned to Codex"
+    next_task: "Await Codex WO-004 delivery (Phase 4 Projection Engine)"
     blockers: []
     boot_version: "v1.0"
     assigned_work_orders: []
 
   codex:
     status: "assigned"
-    session_count: 2
-    last_task: "WO-002 COMPLETED — Compiler Frontend (lint fixes applied)"
-    next_task: "WO-003: Storage Layer — Persist IR as Sharded Deterministic JSON (Phase 3)"
+    session_count: 3
+    last_task: "WO-003 COMPLETED — Storage Layer (Phase 3)"
+    next_task: "WO-004: Projection Engine — Derived Projections from IR (Phase 4)"
     blockers: []
     boot_version: "v1.0"
-    assigned_work_orders: ["WO-003"]
+    assigned_work_orders: ["WO-004"]
 
   gemini:
     status: "idle"
@@ -43,8 +43,8 @@ agents:
 
   gemma:
     status: "idle"
-    session_count: 2
-    last_task: "WO-002 re-review — APPROVED"
+    session_count: 3
+    last_task: "WO-003 review — APPROVED"
     next_task: "Await next review assignment"
     blockers: []
     boot_version: "v1.0"
