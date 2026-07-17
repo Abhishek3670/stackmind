@@ -1,15 +1,17 @@
-"""Knowledge compiler validation and registry helpers."""
-
-from .registry import (
-    RegistryLockError,
-    SymbolRegistry,
-    birth_key,
-    node_id_for,
-)
+from .projections import build_projections, cache_root, projection_versions
+from .registry import SymbolRegistry, birth_key, node_id_for
+from .storage import KNOWLEDGE_SCHEMA_VERSION, read_ir
+from .writer import KnowledgeWriter, write_knowledge
 
 __all__ = [
-    "RegistryLockError",
-    "SymbolRegistry",
-    "birth_key",
-    "node_id_for",
+    'KNOWLEDGE_SCHEMA_VERSION',
+    'KnowledgeWriter',
+    'SymbolRegistry',
+    'birth_key',
+    'build_projections',
+    'cache_root',
+    'node_id_for',
+    'projection_versions',
+    'read_ir',
+    'write_knowledge',
 ]

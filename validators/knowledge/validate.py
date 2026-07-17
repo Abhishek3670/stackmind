@@ -11,6 +11,7 @@ from typing import Any
 from jsonschema import Draft7Validator
 
 from .registry import node_id_for
+from .storage import canonical_json
 
 
 @dataclass
@@ -49,7 +50,9 @@ def validate_knowledge(project_path: Path) -> KnowledgeValidationResult:
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            result.issues.append(KnowledgeIssue(f"Invalid registry JSON: {exc}", _rel(path, sync_path)))
+            result.issues.append(
+                KnowledgeIssue(f"Invalid registry JSON: {exc}", _rel(path, sync_path))
+            )
             continue
 
         if schema is not None:
@@ -69,6 +72,7 @@ def validate_knowledge(project_path: Path) -> KnowledgeValidationResult:
     _validate_birth_hash(records, sync_path, result)
     _validate_alias_uniqueness(records, sync_path, result)
     _validate_node_bijection(sync_path, records, result)
+    _validate_storage(project_path, sync_path, result)
     return result
 
 
@@ -114,7 +118,9 @@ def _validate_unique_node_ids(
     counts = Counter(ids)
     for node_id, count in sorted(counts.items()):
         if count > 1:
-            result.issues.append(KnowledgeIssue(f"Duplicate NodeID: {node_id} appears {count} times"))
+            result.issues.append(
+                KnowledgeIssue(f"Duplicate NodeID: {node_id} appears {count} times")
+            )
 
     short_ids = [node_id.split("-", 1)[1] for node_id in ids if "-" in node_id]
     for short_id in short_ids:
@@ -156,7 +162,9 @@ def _validate_alias_uniqueness(
     counts = Counter(aliases)
     for alias, count in sorted(counts.items()):
         if count > 1:
-            result.issues.append(KnowledgeIssue(f"Alias resolves to multiple live records: {alias}"))
+            result.issues.append(
+                KnowledgeIssue(f"Alias resolves to multiple live records: {alias}")
+            )
 
 
 def _validate_node_bijection(
@@ -201,7 +209,9 @@ def _earliest_history_key(record: dict[str, Any]) -> str | None:
     history = record.get("history")
     if not isinstance(history, list) or not history:
         return None
-    keyed_entries = [entry for entry in history if isinstance(entry, dict) and isinstance(entry.get("key"), str)]
+    keyed_entries = [
+        entry for entry in history if isinstance(entry, dict) and isinstance(entry.get("key"), str)
+    ]
     if not keyed_entries:
         return None
     keyed_entries.sort(key=lambda entry: entry.get("rev", 0))
@@ -211,7 +221,15 @@ def _earliest_history_key(record: dict[str, Any]) -> str | None:
 def _is_code_kind(kind: Any) -> bool:
     if not isinstance(kind, str):
         return False
-    return kind.lower() in {"module", "package", "class", "function", "method", "variable", "constant"}
+    return kind.lower() in {
+        "module",
+        "package",
+        "class",
+        "function",
+        "method",
+        "variable",
+        "constant",
+    }
 
 
 def _rel(path: Path, sync_path: Path) -> str:
@@ -219,3 +237,111 @@ def _rel(path: Path, sync_path: Path) -> str:
         return path.relative_to(sync_path).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _validate_storage(
+    project_path: Path, sync_path: Path, result: KnowledgeValidationResult
+) -> None:
+    root = sync_path / "knowledge"
+    nodes: dict[str, tuple[Path, dict[str, Any]]] = {}
+    schema = _load_schema(project_path, "node.schema.json")
+    for path in sorted((root / "nodes").glob("*/*/*.json")) if (root / "nodes").exists() else []:
+        try:
+            node = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            result.issues.append(KnowledgeIssue(f"Invalid node JSON: {exc}", _rel(path, sync_path)))
+            continue
+        _schema_issues(schema, node, path, sync_path, "node", result)
+        _canonical_issue(path, node, sync_path, result)
+        node_id = node.get("node_id")
+        if isinstance(node_id, str):
+            nodes[node_id] = (path, node)
+            if path.name != f"{node_id}.json" or path.parent.name != node_id.split("-", 1)[-1][:2]:
+                result.issues.append(
+                    KnowledgeIssue(f"Node shard mismatch for {node_id}", _rel(path, sync_path))
+                )
+            if path.parent.parent.name != node.get("kind"):
+                result.issues.append(
+                    KnowledgeIssue(f"Node kind path mismatch for {node_id}", _rel(path, sync_path))
+                )
+            if "\\" in node.get("deterministic", {}).get("path", ""):
+                result.issues.append(
+                    KnowledgeIssue(f"Node path is not normalized: {node_id}", _rel(path, sync_path))
+                )
+        for edge in node.get("deterministic", {}).get("outgoing", []):
+            if (
+                edge.get("resolution") == "RESOLVED"
+                and edge.get("target_id") not in nodes
+                and edge.get("target_id")
+            ):
+                # Checked after all nodes have been read.
+                pass
+    for source_id, (path, node) in nodes.items():
+        for edge in node.get("deterministic", {}).get("outgoing", []):
+            if edge.get("source_id") != source_id:
+                result.issues.append(
+                    KnowledgeIssue(f"Edge source mismatch for {source_id}", _rel(path, sync_path))
+                )
+            if edge.get("resolution") == "RESOLVED" and edge.get("target_id") not in nodes:
+                result.issues.append(
+                    KnowledgeIssue(
+                        f"Dangling resolved edge target: {edge.get('target_id')}",
+                        _rel(path, sync_path),
+                    )
+                )
+    revisions = []
+    schema = _load_schema(project_path, "revision.schema.json")
+    for path in (
+        sorted((root / "revisions").glob("REV-*.json")) if (root / "revisions").exists() else []
+    ):
+        try:
+            revision = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            result.issues.append(
+                KnowledgeIssue(f"Invalid revision JSON: {exc}", _rel(path, sync_path))
+            )
+            continue
+        _schema_issues(schema, revision, path, sync_path, "revision", result)
+        _canonical_issue(path, revision, sync_path, result)
+        revisions.append((path, revision))
+    for expected, (path, revision) in enumerate(revisions, 1):
+        if (
+            revision.get("id") != expected
+            or path.name != f"REV-{expected:010d}.json"
+            or revision.get("parent") != (expected - 1 or None)
+        ):
+            result.issues.append(
+                KnowledgeIssue(
+                    "Revision chain is not sequential",
+                    _rel(path, sync_path),
+                )
+            )
+
+
+def _load_schema(project_path: Path, name: str) -> dict[str, Any] | None:
+    path = project_path / "schemas" / "knowledge" / name
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def _schema_issues(
+    schema: dict[str, Any] | None,
+    value: dict[str, Any],
+    path: Path,
+    sync_path: Path,
+    label: str,
+    result: KnowledgeValidationResult,
+) -> None:
+    if schema:
+        for error in Draft7Validator(schema).iter_errors(value):
+            result.issues.append(
+                KnowledgeIssue(f"{label} schema: {error.message}", _rel(path, sync_path))
+            )
+
+
+def _canonical_issue(
+    path: Path, value: dict[str, Any], sync_path: Path, result: KnowledgeValidationResult
+) -> None:
+    if path.read_text(encoding="utf-8").replace("\r\n", "\n") != canonical_json(value):
+        result.issues.append(
+            KnowledgeIssue("Artifact is not canonical JSON", _rel(path, sync_path))
+        )
