@@ -196,7 +196,12 @@ class _ParserVisitor(ast.NodeVisitor):
             )
         self.generic_visit(node)
 
-    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef, *, is_async: bool) -> None:
+    def _visit_function(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        *,
+        is_async: bool,
+    ) -> None:
         qualname = self._child_qualname(node.name)
         owner_kind = self.stack[-1][0]
         kind = "Method" if owner_kind == "Class" else "Function"

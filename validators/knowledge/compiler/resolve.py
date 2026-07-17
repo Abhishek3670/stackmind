@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from cli.lock import acquire_lock, release_lock
 from validators.knowledge.registry import SymbolRegistry, birth_key, node_id_for
@@ -316,8 +315,16 @@ def _resolve_with_jedi(
         return None
     source_path = project_path / call.path
     try:
-        script = jedi.Script(path=str(source_path), project=jedi.Project(str(project_path)))
-        names = script.goto(line=call.line, column=0, follow_imports=True, follow_builtin_imports=False)
+        script = jedi.Script(
+            path=str(source_path),
+            project=jedi.Project(str(project_path)),
+        )
+        names = script.goto(
+            line=call.line,
+            column=0,
+            follow_imports=True,
+            follow_builtin_imports=False,
+        )
     except Exception:
         return None
     for name in names:
@@ -328,7 +335,11 @@ def _resolve_with_jedi(
             rel = Path(module_path).resolve().relative_to(project_path).as_posix()
         except ValueError:
             continue
-        full_name = f"{rel[:-3].replace('/', '.')}.{name.name}" if rel.endswith(".py") else name.name
+        full_name = (
+            f"{rel[:-3].replace('/', '.')}.{name.name}"
+            if rel.endswith(".py")
+            else name.name
+        )
         match = by_global_name.get(full_name)
         if match is not None:
             return match
