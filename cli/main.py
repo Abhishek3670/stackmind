@@ -6,6 +6,7 @@ import click
 
 from . import __version__
 from .graph import graph
+from .harness import harness
 
 
 @click.group()
@@ -79,9 +80,10 @@ def validate(project_path: str, fix: bool):
 
         stackmind validate --fix
     """
-    from .validate import Severity, validate as run_validate
-
     from rich.console import Console
+
+    from .validate import Severity
+    from .validate import validate as run_validate
 
     console = Console()
     result = run_validate(Path(project_path), fix=fix)
@@ -176,9 +178,20 @@ def migrate(project_path: str, target_version: str | None, check: bool, rollback
 
 @cli.command()
 @click.argument("agent", type=str)
-@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    type=click.Path(exists=True),
+    default=".",
+    help="Project path",
+)
 @click.option("--force", is_flag=True, help="Skip handoff validation (not recommended)")
-@click.option("--defer", is_flag=True, help="Defer unprocessed inbox items instead of blocking shutdown")
+@click.option(
+    "--defer",
+    is_flag=True,
+    help="Defer unprocessed inbox items instead of blocking shutdown",
+)
 def shutdown(agent: str, project_path: str, force: bool, defer: bool):
     """Shutdown an agent session with handoff validation.
 
@@ -207,7 +220,14 @@ def shutdown(agent: str, project_path: str, force: bool, defer: bool):
 
 @cli.command()
 @click.argument("agent", type=str)
-@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    type=click.Path(exists=True),
+    default=".",
+    help="Project path",
+)
 def promote(agent: str, project_path: str):
     """Promote a worker's draft snapshot to canonical (CLAUDE-01).
 
@@ -243,8 +263,20 @@ def lock():
 
 @lock.command("acquire")
 @click.argument("agent", type=str)
-@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
-@click.option("--session-id", "session_id", default=None, help="Session identifier to record in the lock")
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    type=click.Path(exists=True),
+    default=".",
+    help="Project path",
+)
+@click.option(
+    "--session-id",
+    "session_id",
+    default=None,
+    help="Session identifier to record in the lock",
+)
 @click.option("--force", is_flag=True, help="Steal the lock even if another agent holds it")
 def lock_acquire(agent: str, project_path: str, session_id: str | None, force: bool):
     """Acquire the write lock for AGENT.
@@ -275,7 +307,14 @@ def lock_acquire(agent: str, project_path: str, session_id: str | None, force: b
 
 @lock.command("release")
 @click.argument("agent", type=str)
-@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    type=click.Path(exists=True),
+    default=".",
+    help="Project path",
+)
 @click.option("--force", is_flag=True, help="Release even if another agent holds the lock")
 def lock_release(agent: str, project_path: str, force: bool):
     """Release the write lock held by AGENT.
@@ -305,7 +344,14 @@ def lock_release(agent: str, project_path: str, force: bool):
 
 
 @lock.command("status")
-@click.option("--project", "-p", "project_path", type=click.Path(exists=True), default=".", help="Project path")
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    type=click.Path(exists=True),
+    default=".",
+    help="Project path",
+)
 def lock_status(project_path: str):
     """Show the current write-lock status.
 
@@ -340,6 +386,7 @@ def lock_status(project_path: str):
 
 
 cli.add_command(graph)
+cli.add_command(harness)
 
 if __name__ == "__main__":
     cli()

@@ -1,6 +1,6 @@
 # AGENTS.md
-Version: v1.1
-Runtime: D021 + D022 + D023.x + D024 + D025 + D031
+Version: v2.0
+Runtime: D021 + D022 + D023.x + D024 + D025 + D031 + KNOW-01 + HARNESS-01
 Authority: CEO → Claude → Gemma → Workers
 Project: stackmind
 
@@ -47,6 +47,12 @@ Never scan all work orders.
 7. Read only unseen decision deltas.
 
 8. Read PLAN.md only if assigned work requires product context.
+
+9. Query Knowledge API for task context (KNOW-01).
+
+Use `stackmind graph context` or `stackmind graph query` to understand
+the codebase relevant to assigned work. Do NOT scan source files manually
+when the knowledge store is available.
 
 ---
 
@@ -107,6 +113,9 @@ Agents must NEVER:
 - treat a broken local test environment as non-blocking (GEMINI-01)
 - bypass the advisory lock by performing manual writes to canonical files; all canonical changes must go through the CLI (PLAT-03)
 - forcibly acquire a lock (using `--force`) unless the previous holder is confirmed stuck or dead (PLAT-03)
+- manually edit `.sync/knowledge/` files — it is compiler output; run `graph build` or `graph update` to refresh (KNOW-01)
+- scan source files for symbol lookup when the Knowledge API is available and the graph is not stale (KNOW-01)
+- bypass the harness verification gate — invalid output must never persist silently (HARNESS-01)
 
 ---
 
@@ -300,18 +309,19 @@ Before ending session:
 
 1. Write work output
 2. Write tests
-3. Write session report
-4. Write draft snapshot:
+3. Run `stackmind graph update -p .` if source files were modified (KNOW-01)
+4. Write session report
+5. Write draft snapshot:
 
 .sync/runtime/drafts/<agent>.boot.draft.yaml
 
-5. Write handoffs
-6. Commit work
-7. Record `unread_inbox_count` from TREE.yaml in handoff (CLAUDE-02)
-8. Use cardinal session numbering (`session_completed: N`, `next_session_id: N+1`) (CLAUDE-03)
-9. For delegated actions, include `delegating_agent` field in completed items (LOCAL-LLM-01)
-10. For quality metrics, include `commit`, `branch`, `tested_at`; flag unverifiable (GEMMA-03)
-11. Flag any broken local test env as BLOCKED with open BUGFIX WO (GEMINI-01)
+6. Write handoffs
+7. Commit work
+8. Record `unread_inbox_count` from TREE.yaml in handoff (CLAUDE-02)
+9. Use cardinal session numbering (`session_completed: N`, `next_session_id: N+1`) (CLAUDE-03)
+10. For delegated actions, include `delegating_agent` field in completed items (LOCAL-LLM-01)
+11. For quality metrics, include `commit`, `branch`, `tested_at`; flag unverifiable (GEMMA-03)
+12. Flag any broken local test env as BLOCKED with open BUGFIX WO (GEMINI-01)
 
 No silent exits.
 
@@ -335,6 +345,116 @@ Escalate to CEO if:
 Never guess.
 
 Escalate.
+
+---
+
+# Knowledge API Protocol (KNOW-01)
+
+All agents MUST prefer the Knowledge API over manual file scanning when
+understanding the codebase. The Knowledge API provides compiled, indexed,
+provenance-tracked results in milliseconds.
+
+## When to Use the Knowledge API
+
+| Task | Command | Instead Of |
+|------|---------|-----------|
+| Find a symbol | `stackmind graph query "name"` | `grep -r "name" .` |
+| Find callers | `stackmind graph callers "symbol"` | reading all files for references |
+| Impact of a change | `stackmind graph impact "symbol"` | guessing what breaks |
+| Understand a subsystem | `stackmind graph context "question"` | reading 10+ files |
+| Check graph health | `stackmind graph stats` | manual file counting |
+
+## Agent Context Assembly
+
+When preparing context for LLM prompts or understanding a work order:
+
+```bash
+stackmind graph context "<work order description>" --token-budget 2000 -p .
+```
+
+This returns a bounded, ranked, revision-stamped bundle with:
+- Relevant symbols and their signatures
+- Call relationships
+- Provenance (revision, git_commit, stale flag, confidence)
+- Explicit truncation reporting (never silent)
+
+## After Code Changes
+
+Workers MUST update the knowledge store after modifying source:
+
+```bash
+stackmind graph update -p .
+```
+
+This runs incremental compilation (content-hash dirty detection) — only
+affected symbols recompile. Unchanged files are skipped entirely.
+
+## Rules
+
+1. **Query first, read second** — Use Knowledge API before opening source files.
+   Manual file reads are acceptable only when the API result is insufficient
+   (flagged stale, symbol not found, or deeper context needed).
+
+2. **Trust provenance** — Results include `stale: true/false` and `confidence`.
+   Stale results are served (never blocked) but should be treated as approximate.
+
+3. **Respect token budgets** — `assemble_context` enforces limits. If truncated,
+   the response says so. Do not attempt to bypass by making multiple calls for
+   the same context.
+
+4. **Never modify knowledge store directly** — It is a compiler output.
+   Run `graph build` or `graph update` to refresh. Manual edits to
+   `.sync/knowledge/` are forbidden.
+
+5. **Alias-aware** — Renamed symbols are findable by their old name (via alias).
+   Agents do not need to track renames manually.
+
+---
+
+# Harness Runtime Protocol (HARNESS-01)
+
+The Harness Runtime provides governed agent execution. It can run agents
+autonomously with full protocol citizenship.
+
+## Harness Execution Model
+
+```
+stackmind harness run-once
+```
+
+The harness:
+1. Polls inbox and assigned work orders
+2. Assembles context via Knowledge API (`assemble_context`)
+3. Sends context + task to LLM
+4. Validates LLM output against `harness-output.schema.json`
+5. Runs `stackmind validate` on staged changes
+6. Writes back only if validation passes
+7. Reports via observability (tokens, latency, cost)
+
+## Safety Mechanisms
+
+| Mechanism | Behavior |
+|-----------|----------|
+| **Checked locking** | Lock wraps writes only; failure → backoff → defer+blocker |
+| **Verification gate** | Invalid output never persists silently |
+| **Loop safety** | >3 re-reads of same resource → abort+blocker |
+| **Retrieval caps** | Cost cap exhaustion → internal-only (flagged), task continues |
+| **Prompt-injection defense** | External snippets quoted as evidence, never instructions |
+| **Worker authority** | TREE.yaml byte-identical after a full runner session |
+
+## Rules
+
+1. **Harness operates at Worker level** — It cannot modify canonical state,
+   promote snapshots, or change work order status. Same authority as Codex/Gemini.
+
+2. **Verification before write-back** — Every write passes through schema
+   validation + `stackmind validate`. No exceptions.
+
+3. **Observable** — Every harness run produces structured events with:
+   revision, provider, tokens, latency, cost. Reportable via `graph stats`.
+
+4. **Fail-safe** — On any error, the harness defers and creates a blocker.
+   It never retries destructively or enters infinite loops.
 
 ---
 
