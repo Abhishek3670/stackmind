@@ -1,14 +1,14 @@
 schema_version: 1
-tree_version: 9
+tree_version: 10
 graph_version: null
-last_updated: "2026-07-17T20:03:00+05:30"
+last_updated: "2026-07-17T21:57:00+05:30"
 
-current_phase: "PHASE_7"
-phase_status: "COMPLETE"
+current_phase: "PHASE_8"
+phase_status: "ACTIVE"
 release: "2.0.0"
 
 work_orders:
-  total_active: 0
+  total_active: 1
   total_blocked: 0
   total_completed: 7
   index_file: "work-orders/INDEX.yaml"
@@ -17,20 +17,20 @@ agents:
   claude:
     status: "active"
     session_count: 2
-    last_task: "WO-007 approved; Pillar 2 complete (Phases 1-7 shipped)"
-    next_task: "Phase 8 planning (Harness Runtime) — gated on RFC-006 + Knowledge API adoption"
+    last_task: "Phase 8 gate satisfied; WO-008 unblocked and assigned to Codex"
+    next_task: "Await Codex WO-008 delivery (Phase 8 Harness Runtime)"
     blockers: []
     boot_version: "v1.0"
     assigned_work_orders: []
 
   codex:
-    status: "idle"
+    status: "assigned"
     session_count: 7
     last_task: "WO-007 COMPLETED — Knowledge API + Agent Integration (Phase 7)"
-    next_task: "Await Phase 8 assignment (Harness Runtime) — gated"
+    next_task: "WO-008: Harness Runtime — Governed Agent Execution Loop (Phase 8)"
     blockers: []
     boot_version: "v1.0"
-    assigned_work_orders: []
+    assigned_work_orders: ["WO-008"]
 
   gemini:
     status: "idle"
@@ -66,8 +66,8 @@ inbox_unread:
   gemma: 0
   local-llm: 1
 
-latest_decision: "D-002"
-latest_decision_title: "Cross-Phase Coupling Resolution — cli/graph.py imports"
+latest_decision: "D-003"
+latest_decision_title: "RFC-006 Accepted — Phase 8 Gate: Knowledge API Adoption Session Required"
 decisions_pending: []
 active_dependencies: []
 

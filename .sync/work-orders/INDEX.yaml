@@ -79,7 +79,18 @@ orders:
       type: "module"
       path: "validators/knowledge/api.py"
       description: "Read-only Knowledge API with four query primitives, context assembly, and provenance tracking"
-next_id: 8
-total_active: 0
+  - id: "WO-008"
+    type: FEATURE
+    title: "Harness Runtime — Governed Agent Execution Loop (Phase 8)"
+    status: ACTIVE
+    priority: P2
+    assigned_agents: ["codex"]
+    dependencies: ["WO-007"]
+    deliverable:
+      type: "module"
+      path: "TBD"
+      description: "Governed agent execution loop with Knowledge API integration, verification gates, and observability"
+next_id: 9
+total_active: 1
 total_completed: 7
 total_blocked: 0
