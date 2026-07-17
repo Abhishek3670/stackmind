@@ -90,6 +90,7 @@ def validate(project_path: str, fix: bool):
         console.print("[bold green][PASS] Structure validation[/bold green]")
         console.print("[bold green][PASS] Protocol compliance[/bold green]")
         console.print("[bold green][PASS] Boot integrity[/bold green]")
+        console.print("[bold green][PASS] Knowledge validation[/bold green]")
         console.print("\n[bold green]Runtime is healthy.[/bold green]")
     else:
         for issue in result.issues:

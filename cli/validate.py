@@ -1143,6 +1143,9 @@ def validate(project_path: Path, fix: bool = False) -> ValidationResult:
     # PLAT-05: anchor the main repo to the .sync repo via .sync-ref
     validate_sync_ref(project_path, sync_path, result)
 
+    # Layer 5: knowledge registry identity invariants
+    validate_knowledge_layer(project_path, result)
+
     # Auto-fix if requested
     if fix and result.warnings:
         fixable = [i for i in result.issues if i.auto_fixable]
@@ -1153,3 +1156,17 @@ def validate(project_path: Path, fix: bool = False) -> ValidationResult:
             console.print(f"[bold green][+][/bold green] Auto-fixed {fixed_count} issues")
 
     return result
+
+
+def validate_knowledge_layer(project_path: Path, result: ValidationResult) -> None:
+    """Validate knowledge registry artifacts when present."""
+    from validators.knowledge.validate import validate_knowledge
+
+    knowledge_result = validate_knowledge(project_path)
+    for issue in knowledge_result.issues:
+        result.issues.append(Issue(
+            layer="Knowledge",
+            severity=Severity.ERROR,
+            message=issue.message,
+            path=issue.path,
+        ))

@@ -1,508 +1,477 @@
-# StackMind — Agent Runtime Flaw Analysis & Improvement Plan
+# StackMind — Implementation Plan (Compiler-Backed Engineering Runtime)
 
-**Based on:** Session handoff reports from Claude (session 30), Codex, Gemma, Gemini, Local-LLM  
-**Runtime version analyzed:** v1.0.4 (commit dd35298, tag v1.0.4)  
-**Date:** 2026-06-18  
-**Status:** OPEN — pending Claude review and CEO prioritization
+**Version:** 2.0
+**Supersedes:** PLAN.md (v1 — runtime flaw analysis), PLAN-v1.md
+**Authoritative source:** `docs/STACKMIND_ARCHITECTURE.md` (Architecture Handbook)
+**Date:** 2026-07-17
+**Status:** OPEN — awaiting CEO prioritization and RFC acceptance sign-off
+**Author:** Claude (Senior Architect), Session 1
 
 ---
 
 ## Executive Summary
 
-Five agent handoff reports were analyzed against the StackMind protocol spec (D021–D031) and architecture docs. The findings reveal one root cause driving most issues: **there is no single source of truth that every agent verifiably anchors to at write time.** Multiple "almost-canonical" artifacts (`TREE.yaml`, `claude.boot.yaml`, `INDEX.yaml`, git tags) are supposed to stay synchronized, but nothing actively enforces their agreement. The result is agents that pass their own boot checks while being silently wrong about the shared state of the system.
+StackMind v1.2.0 ships a fully functional **Runtime Governance** layer (Pillar 1): CLI, 4-layer validation, write-lock, work orders, agent protocols. The old PLAN.md addressed flaw patches to this governance layer — those fixes are now implemented and shipped.
 
-All 14 identified flaws and their fixes are documented below, grouped by scope.
+This plan charts the path from governance runtime to **compiler-backed engineering runtime** — implementing Pillars 2 (Knowledge Compiler) and 3 (Harness Runtime) as specified in the Architecture Handbook and six RFCs.
 
----
-
-## Part 1 — Platform-Level Flaws
-
-These affect all agents and must be addressed in the StackMind engine before per-agent fixes have lasting effect.
+The central insight: every AI agent session today rebuilds its understanding from scratch. The Knowledge Compiler transforms project state into persistent, deterministic, queryable knowledge. Agents start from shared understanding instead of independently rediscovering it.
 
 ---
 
-### PLAT-01 · Boot integrity check is circular — validates stale against stale
+## Current State vs. Target
 
-**Severity:** Critical  
-**Protocol reference:** D021, validation Layer 4 (Boot Integrity)
+### What Exists (Pillar 1 — Shipped, v1.2.0)
 
-**Flaw:**  
-Layer 4 compares `claude.boot.yaml`'s recorded version against `TREE.yaml`'s `tree_version`. When both files are stale at the same version (both v1.0.3 while git/INDEX was already at v1.0.4), the check passes — because the two stale files agree with *each other*, not with the truth. Claude's session 29→30 caught this manually; the validator did not.
+| Component | Status | Location |
+|---|---|---|
+| CLI entry point | ✅ Shipped | `cli/main.py` — 7 commands |
+| 4-layer validation | ✅ Shipped | `cli/validate.py` |
+| Write lock (PLAT-03) | ✅ Shipped | `cli/lock.py` |
+| Promote with validation gate (CLAUDE-01) | ✅ Shipped | `cli/promote.py` |
+| Shutdown with inbox drain (GEMMA-02) | ✅ Shipped | `cli/shutdown.py` |
+| Migration engine | ✅ Shipped | `cli/migrate.py` |
+| Normalization decisions (PLAT-04) | ✅ Shipped | `cli/decisions.py` |
+| Canonical drift detection (PLAT-01) | ✅ Shipped | `cli/validate.py` (Layer 4) |
+| .sync-ref anchoring (PLAT-05) | ✅ Shipped | `cli/validate.py` |
+| CODEX-01 fresh TREE reads | ✅ Shipped | `cli/shutdown.py` |
+| Schemas (7 runtime) | ✅ Shipped | `schemas/` |
+| Tests (>90% coverage on cli/) | ✅ Shipped | `tests/` |
 
-**Fix:**  
-Boot integrity validation must anchor to an external ground-truth source. Read `INDEX.yaml.version` (which stays current through git operations) and compare it against `TREE.yaml.version`. If they differ, halt and require normalization before proceeding.
+### What Must Be Built (Pillars 2 & 3)
 
-Concrete rule to add to Layer 4:
+| Component | Status | Planned Location |
+|---|---|---|
+| Symbol Registry (T0, canonical) | ❌ Not started | `validators/knowledge/registry.py` + `.sync/knowledge/registry/` |
+| Compiler Frontend (parse + resolve) | ❌ Not started | `validators/knowledge/compiler/` |
+| IR (intermediate representation) | ❌ Not started | `validators/knowledge/compiler/ir.py` |
+| Storage/Writer (nodes, revisions) | ❌ Not started | `validators/knowledge/storage.py` |
+| Projection Engine (reverse index, search, metrics) | ❌ Not started | `validators/knowledge/projections/` |
+| Incremental Compiler + Rename Detection | ❌ Not started | `validators/knowledge/compiler/incremental.py` |
+| Background Intelligence (enricher) | ❌ Not started | `validators/knowledge/enricher.py` |
+| Knowledge API (read-only surface) | ❌ Not started | `validators/knowledge/api.py` |
+| Layer-5 Validation (knowledge) | ❌ Not started | `validators/knowledge/validate.py` |
+| CLI `graph` command group | ❌ Not started | `cli/graph.py` |
+| Knowledge schemas | ❌ Not started | `schemas/knowledge/` |
+| Agent Runner (Harness) | ❌ Not started | TBD (post Pillar 2) |
+| Retrieval tools (WebSearchRunner) | ❌ Not started | TBD (post Pillar 2) |
+
+---
+
+## Phase 0 — Architecture Freeze (CURRENT GATE)
+
+**Objective:** Close the planning phase. Record RFC acceptance. Authorize implementation.
+
+**Status:** All 6 RFCs written. Acceptance not formally recorded.
+
+**Deliverables:**
+1. Record formal acceptance of RFC-001, RFC-002, RFC-003 (Phase 0 exit gate)
+2. Record acceptance of RFC-004, RFC-005, RFC-006 (can trail, gates later phases)
+3. Commit the docs/ planning artifacts to version control
+4. This PLAN.md committed as the authoritative roadmap
+
+**Exit gate:** RFC-001/002/003 signed off by CEO. No implementation code merges until this gate passes.
+
+**Decision required:** CEO must confirm GO on the three core RFCs.
+
+---
+
+## Phase 1 — Identity Foundation
+
+**Objective:** Permanent, deterministic symbol identity backed by a canonical, sharded registry.
+
+**Depends on:** Phase 0 (RFC-001 accepted)
+**Assigned to:** Codex (Backend Lead)
+**Priority:** P0
+
+### Workstreams
+
+1. **Registry store** — Sharded per-symbol JSON files under `.sync/knowledge/registry/` (2-hex prefix buckets)
+2. **Birth-hash minting** — `NodeID = TYPE-first16(SHA256(path:qualname))` at first sighting, frozen forever
+3. **Registry lifecycle** — load / create-if-missing / upsert / mark-obsolete / alias
+4. **Registry schema** — `schemas/knowledge/symbol.schema.json` (Draft-7)
+5. **Layer-5 validation stub** — unique IDs, ID = birth-hash of earliest history key, bijection check
+6. **Migration hook** — registry participates in `stackmind migrate`
+
+### Files Created
 
 ```
-IF TREE.yaml.version != INDEX.yaml.version:
-    RAISE canonical_drift_error
-    HALT boot sequence
-    WRITE normalization required notice to Claude inbox
+schemas/knowledge/symbol.schema.json
+validators/knowledge/__init__.py
+validators/knowledge/registry.py
+validators/knowledge/validate.py          (Layer-5 stub)
+tests/test_registry.py
 ```
 
-**Acceptance criteria:** A simulated drift (manually set `claude.boot.yaml` to v1.0.3 while `INDEX.yaml` is at v1.0.4) must cause `stackmind validate` to fail with a clear error message, not pass silently.
+### Acceptance Gate
+
+- [ ] Same repo compiled twice → identical NodeIDs
+- [ ] Registry survives deletion of all derived projections
+- [ ] `stackmind validate` Layer-5 passes on a seeded registry
+- [ ] `stackmind validate` Layer-5 fails on injected duplicate ID
+- [ ] Rename-stability is NOT asserted here (deferred to Phase 5, per C4)
 
 ---
 
-### PLAT-02 · `tree_version` abused as a broadcast/cache-invalidation signal
+## Phase 2 — Compiler Frontend (Deterministic)
 
-**Severity:** High  
-**Protocol reference:** D021 (boot optimization), TREE.yaml ownership
+**Objective:** Deterministic Source → IR. No LLMs. Byte-identical output across runs.
 
-**Flaw:**  
-Claude deliberately bumped `tree_version 46→47` during session 30 "so all other agents detect mismatch and re-read TREE on next boot." The platform has no formal broadcast mechanism, so a versioning field is being used as a notification bus. This creates false-positive drift events for other agents, leaves no entry in the decision log, and conflates versioning with signaling.
+**Depends on:** Phase 1, RFC-003 accepted
+**Assigned to:** Codex (Backend Lead)
+**Priority:** P0
 
-**Fix:**  
-Add a `last_normalized_at` ISO timestamp field to `TREE.yaml`. Agents compare this to their snapshot's `last_read_at` during boot step 2 (PEEK). A newer timestamp triggers a full TREE re-read without touching the version counter.
+### Workstreams
 
-Alternatively — and more robustly — add a `.sync/runtime/BROADCAST` file that Claude writes invalidation notices to (one line per entry: `<ISO timestamp> <reason>`). Agents read only lines newer than their `last_boot_at`.
+1. **LibCST parser** — modules, classes, functions/methods; qualified-name stack derivation
+2. **Symbol table build** — every definition → `(path, qualname)` → registry lookup → NodeID
+3. **Jedi-backed resolver** — intra-repo imports/calls; repo-scoped only (no installed packages)
+4. **Resolution tiers** — RESOLVED / EXTERNAL / UNRESOLVED (placeholder edges, never dropped)
+5. **IR definition** — in-memory canonical form; pure function of (source, .sync, git, registry, compiler_version)
+6. **Two-pass resolution** — pass 1 registers all symbols; pass 2 resolves edges (forward refs resolve)
 
-`tree_version` must only increment when the TREE schema or structural content genuinely changes, not as a notification mechanism.
+### Files Created
+
+```
+validators/knowledge/compiler/__init__.py
+validators/knowledge/compiler/parse.py
+validators/knowledge/compiler/resolve.py
+validators/knowledge/compiler/ir.py
+tests/test_compiler_frontend.py
+```
+
+### Acceptance Gate (DETERMINISM)
+
+- [ ] `compile(repo) == compile(repo)` — IR byte-identical across repeated runs
+- [ ] IR byte-identical across fresh checkout at same commit
+- [ ] Unresolved calls recorded (never dropped)
+- [ ] No wall-clock, RNG, PID, or absolute path in IR
+- [ ] External calls (stdlib/third-party) recorded as EXTERNAL, never linked to NodeIDs
+- [ ] **Compile-twice-diff CI gate passes**
 
 ---
 
-### PLAT-03 · No write-ordering or concurrency guard on `.sync` mutations
+## Phase 3 — Storage Layer
 
-**Severity:** High  
-**Protocol reference:** D023 shutdown sequence, key invariant 5 (only Claude writes to `runtime/boot/`)
+**Objective:** Persist IR as sharded, schema-validated, deterministic JSON under `.sync/knowledge/`.
 
-**Flaw:**  
-In the session-30 window, Claude wrote `claude.boot.yaml`, Codex wrote its draft snapshot, and Local-LLM committed the `.sync` repo — all in an undefined order with no locking. Codex's draft captured `tree_version 46` at the moment Claude was bumping it to 47, making the draft immediately stale before it was even written.
+**Depends on:** Phase 2, RFC-002 accepted
+**Assigned to:** Codex (Backend Lead)
+**Priority:** P1
 
-**Fix:**  
-Add a `.sync/runtime/LOCK` file (a write-lock marker). The active agent creates it at boot (containing agent name + session ID + ISO timestamp) and removes it at shutdown. All mutations to canonical paths (`runtime/boot/`, `TREE.yaml`) must check for the lock and refuse if another agent holds it. The CLI's `stackmind shutdown` command should be the only mechanism that clears the lock, enforcing serialized canonical writes across sessions.
+### Workstreams
 
-```yaml
-# .sync/runtime/LOCK (example)
-held_by: claude
-session_id: 30
-acquired_at: 2026-06-10T09:14:00+05:30
+1. **Directory layout** — `registry/` (T0), `nodes/<Type>/<2-hex>/` (T1), `revisions/` (T1), `cache/` (T2, gitignored)
+2. **Node files** — deterministic block + outgoing edges inline + empty `ai` block
+3. **Canonical serialization** — sorted keys, sorted set-arrays, fixed formatting, LF endings
+4. **Revision stamping** — monotonic ID, parent link, git commit, .sync ref, compiler/schema/registry versions, counts
+5. **Atomic writes** — temp-write + rename; crash never leaves half-written files
+6. **Node/revision schemas** — `schemas/knowledge/{node,revision}.schema.json`
+7. **Layer-5 expansion** — no dup IDs; edge targets exist or flagged; revision chain unbroken
+
+### Files Created
+
+```
+schemas/knowledge/node.schema.json
+schemas/knowledge/revision.schema.json
+validators/knowledge/storage.py
+validators/knowledge/writer.py
+tests/test_storage.py
+```
+
+### Acceptance Gate
+
+- [ ] IR → disk is deterministic (identical bytes for identical IR)
+- [ ] One-symbol change rewrites only that node's file (+ registry shard)
+- [ ] `stackmind validate` Layer-5 catches injected dangling edge
+- [ ] Revision chain is monotonic and unbroken
+- [ ] No wall-clock anywhere in node files (time lives only in revisions)
+
+---
+
+## Phase 4 — Projection Engine
+
+**Objective:** Generate all derived projections from IR. Prove rebuildability (the platform's fundamental promise).
+
+**Depends on:** Phase 3
+**Assigned to:** Codex (Backend Lead)
+**Priority:** P1
+
+### Workstreams
+
+1. **Reverse Index projection** (T2, gitignored) — `NodeID → [{source, relation}…]`, sharded by target bucket
+2. **Search Index projection** (T2) — text search over names, signatures, summaries
+3. **Metrics projection** (T2) — module/class/function counts, edge counts, coverage stats
+4. **CLI `graph` command group** — `build`, `stats`, `versions` under `cli/graph.py`
+5. **Projector contract** — pure function, declared inputs; no projector reads another's T2
+
+### Files Created
+
+```
+cli/graph.py                              (new CLI command group)
+validators/knowledge/projections/__init__.py
+validators/knowledge/projections/reverse_index.py
+validators/knowledge/projections/search.py
+validators/knowledge/projections/metrics.py
+tests/test_projections.py
+```
+
+### Acceptance Gate (REBUILDABILITY)
+
+- [ ] Delete all projections → recompile → **identical** projections
+- [ ] "Who calls X?" answered from reverse index without scanning all nodes
+- [ ] `stackmind graph build` produces complete knowledge store from scratch
+- [ ] `stackmind graph stats` reports node/edge/revision counts
+- [ ] Projectors do not read each other's T2 output
+
+---
+
+## Phase 5 — Incremental Compiler + Rename Detection
+
+**Objective:** Rebuild only affected symbols on change. Implement rename/move detection (C4).
+
+**Depends on:** Phase 4
+**Assigned to:** Codex (Backend Lead)
+**Priority:** P1
+
+### Workstreams
+
+1. **Content-hash dirty detection** — unchanged files (by hash) skipped entirely
+2. **Affected-set computation** — dirty symbols ∪ reverse-index inbound of deleted/renamed
+3. **File watcher** (`stackmind graph watch`) — excludes `.sync/knowledge/` and cache dirs (no self-trigger)
+4. **Rename/move detection** — match vanished birth-keys to appeared keys (kind + body-hash + owner + signature)
+5. **Alias recording** — rename rebinds existing NodeID; low-confidence → delete+create
+6. **Batch scheduler** — rapid events debounce; lock acquired per write-batch only
+7. **CLI `graph update`** — incremental compile from Git diff
+
+### Files Created
+
+```
+validators/knowledge/compiler/incremental.py
+validators/knowledge/compiler/rename.py
+validators/knowledge/compiler/watcher.py
+cli/graph.py                              (add `update`, `watch` commands)
+tests/test_incremental.py
+tests/test_rename.py
+```
+
+### Acceptance Gate
+
+- [ ] One file changed → only affected symbols recompile (verified via revision diff)
+- [ ] **Rename test:** rename a function → NodeID unchanged, alias recorded, inbound edges intact
+- [ ] **Move test:** relocate a file → NodeIDs unchanged, paths updated
+- [ ] Watch daemon does not re-trigger itself
+- [ ] Lock held only during write-batch (never during parse/resolve)
+- [ ] Debouncing: rapid saves to one file compile once
+
+---
+
+## Phase 6 — Background Intelligence (Async, Non-Blocking)
+
+**Objective:** Enrich nodes with LLM summaries and embeddings without touching the deterministic path.
+
+**Depends on:** Phase 4, RFC-005 accepted
+**Parallelizable with:** Phase 5
+**Assigned to:** Gemini (Frontend Lead) or Codex
+**Priority:** P2
+
+### Workstreams
+
+1. **Enrichment queue** — new/changed NodeIDs admitted; idempotent; rapid changes coalesce
+2. **LLM summaries** → `ai.summary` + `confidence` + `enriched_hash` (self-describing staleness)
+3. **Embeddings** → T2 gitignored cache; keyed by content hash (rename = cache hit)
+4. **Four-mode privacy policy** — `full` / `signatures` / `local` / `off` (config-gated)
+5. **Cost caps** — per-day token/call budget; exhaustion pauses queue, reports
+6. **Failure discipline** — per-job isolation, exponential backoff, park-with-reason
+7. **CI guard** — Stage-5 run produces zero diff outside `ai` blocks
+
+### Files Created
+
+```
+validators/knowledge/enricher.py
+validators/knowledge/enricher_queue.py
+.sync/knowledge/cache/embeddings/         (gitignored)
+schemas/knowledge/ai-block.schema.json
+tests/test_enricher.py
+```
+
+### Acceptance Gate
+
+- [ ] Compilation and queries succeed with enricher fully disabled
+- [ ] Enabling enricher only adds `ai` fields (never modifies deterministic blocks)
+- [ ] Killing enricher mid-run leaves deterministic state intact
+- [ ] `enriched_hash != content_hash` correctly flags stale summaries
+- [ ] Cost cap exhaustion pauses (not crashes); reported in `graph stats`
+- [ ] **CI: Stage-5 diff is zero outside `ai` blocks**
+
+---
+
+## Phase 7 — Knowledge API + Agent Integration
+
+**Objective:** Agents consume knowledge through a read-only API instead of re-reading files.
+
+**Depends on:** Phase 4 (query surface), RFC-004 accepted
+**Assigned to:** Codex + Gemini
+**Priority:** P2
+
+### Workstreams
+
+1. **Four query primitives** — lookup (exact, alias-aware), filter (attribute scan), traversal (relational), search (semantic with text fallback)
+2. **`assemble_context`** — bounded, ranked, revision-stamped context bundle for agent prompts
+3. **Response envelope** — revision, git_commit, stale flag, semantic flag, confidence per result
+4. **CLI `graph query`** — Q1/Q2/Q4; `graph callers`/`impact` — Q3; `graph context` — assembly
+5. **Staleness handling** — flag-and-serve (never block-and-recompile on the read path)
+6. **Agent protocol update** — `AGENTS.md`, `docs/protocols.md`: "query Knowledge API before parsing files"
+
+### Files Created
+
+```
+validators/knowledge/api.py
+cli/graph.py                              (add `query`, `callers`, `impact`, `explain`, `context` commands)
+tests/test_knowledge_api.py
+```
+
+### Acceptance Gate
+
+- [ ] Cross-file question answered via API with zero repo file reads
+- [ ] Results carry provenance (revision + confidence)
+- [ ] Alias-aware: query by old name finds renamed symbol
+- [ ] `assemble_context` respects token budget; truncation reported (never silent)
+- [ ] Absent embeddings → text fallback, response marked `semantic: false`
+- [ ] Stale graph → results flagged `stale: true`, still served
+
+---
+
+## Phase 8 — Harness Runtime (Gated)
+
+**Objective:** Governed agent execution loop — the third pillar.
+
+**Depends on:** Phase 7 (Knowledge API adopted), RFC-006 accepted
+**Gated by:** Demonstrated Knowledge-API adoption (per Verdict anti-orchestration discipline)
+**Assigned to:** TBD
+**Priority:** P3
+
+### Workstreams
+
+1. **Agent Runner** — Worker-level agent: poll inbox/WOs → assemble context → LLM → verify → write-back
+2. **Checked locking** — lock wraps writes only; failure → backoff → defer+blocker
+3. **Retrieval tools** — `search(query, k) → [Result]` normalized; gated, cached, cost-capped
+4. **Prompt-injection defense** — external snippets quoted as evidence, never instructions
+5. **Verification** — schema + staged `stackmind validate` before any write-back
+6. **Observability** — structured events, meta block on reports (revision, provider, tokens, latency, cost)
+7. **Loop safety** — >3 re-reads → abort+blocker (GEMMA-02 pattern)
+
+### Acceptance Gate
+
+- [ ] Agent Runner registers as Worker agent with full protocol citizenship
+- [ ] TREE.yaml byte-identical after a full runner session (Worker authority)
+- [ ] Lock acquisition is checked; failure → backoff → defer (never unlocked write)
+- [ ] Invalid output never persists silently (verification gate)
+- [ ] Retrieval cap exhaustion → internal-only (flagged), task continues
+- [ ] Baseline-vs-augmented benchmark reportable from observability logs
+
+---
+
+## Dependency Graph
+
+```
+Phase 0 (RFC acceptance)
+    │
+    ├── Phase 1 (Identity)
+    │       │
+    │       └── Phase 2 (Compiler Frontend)
+    │               │
+    │               └── Phase 3 (Storage)
+    │                       │
+    │                       └── Phase 4 (Projection)
+    │                               │
+    │                               ├── Phase 5 (Incremental + Rename)
+    │                               │       │
+    │                               │       └── Phase 7 (API + Agent Integration)
+    │                               │                   │
+    │                               │                   └── Phase 8 (Harness — GATED)
+    │                               │
+    │                               └── Phase 6 (Background Intelligence — parallel with 5)
+    │
+    Critical Path: P0 → P1 → P2 → P3 → P4 → P5 → P7 → P8
 ```
 
 ---
 
-### PLAT-04 · Normalization actions bypass the decision log
+## Cross-Cutting Requirements (All Phases)
 
-**Severity:** Medium  
-**Protocol reference:** D023 (audit trail), decisions/ ownership
+### Invariants (must hold at every phase)
 
-**Flaw:**  
-Claude promoted a draft and bumped `tree_version` under "architect authority" with no new entry in `decisions/`. Any state mutation that affects canonical files (`claude.boot.yaml`, `TREE.yaml`) should be traceable. Currently, normalization-level operations leave no footprint in the audit trail.
+1. Runtime (Source + `.sync/` + Git) is canonical; knowledge is derived
+2. Deterministic stages produce byte-identical output for identical inputs
+3. Symbol identity is permanent (ID never changes)
+4. Registry is canonical (T0): git-tracked, write-locked, validated, migrated
+5. Embeddings are cache (T2): disposable, rebuildable, gitignored
+6. Agents never write knowledge files
+7. Deleting `.sync/knowledge/` never loses state — compiler rebuilds
+8. Lock held only around writes (never during parse/resolve/enrichment)
+9. No LLM in Stages 1–4
 
-**Fix:**  
-Add a lightweight decision type: `NORMALIZATION` (distinct from architecture decisions). Normalization entries are auto-generated by the shutdown sequence, capturing: what files changed, from/to which versions, and at what timestamp. Claude does not need to author these manually; the `stackmind shutdown` command should write them automatically when it detects it has modified a canonical file.
+### Engineering Standards
 
-```yaml
-# decisions/D-047-normalization.yaml (auto-generated example)
-id: D-047
-type: NORMALIZATION
-authored_by: claude
-session: 30
-timestamp: 2026-06-10T10:00:00+05:30
-changes:
-  - file: runtime/boot/claude.boot.yaml
-    from_version: v1.0.3
-    to_version: v1.0.4
-  - file: runtime/TREE.yaml
-    tree_version_from: 46
-    tree_version_to: 47
-reason: Promoted session-30 draft; corrected canonical drift.
-```
+- **Validation ships with features** — schema + Layer-5 checks in same PR as artifacts they guard
+- **Determinism CI** — compile-twice-diff gate for Phases 2–4
+- **Testing ladder** — unit → integration → schema fixtures → rebuildability
+- **Provenance** — every projection traceable to graph revision (git SHA + compiler version)
+- **Additive only** — new modules + new commands; existing CLI unchanged
+- **Lock discipline** — checked acquisition, writes-only hold, always released
 
 ---
 
-### PLAT-05 · `.sync` git-ignore creates audit blindness in the main repo
+## Work Order Mapping
 
-**Severity:** Medium  
-**Protocol reference:** Two-repository architecture (architecture.md)
-
-**Flaw:**  
-Multiple agents note that `.sync/` is ignored by the main repo's git, so draft and session files do not appear in `git status`. This is by design, but it means no agent — and no CI system — can verify the `.sync` commit state from the main repo. Drift is invisible until someone manually `cd .sync && git log`.
-
-**Fix:**  
-Track a `.sync-ref` file in the main project repo. This file contains the most recent `.sync` commit SHA that was considered valid at the time of the last main-repo release. Add a `stackmind validate` check that compares the live `.sync HEAD` against `.sync-ref` and reports if the `.sync` repo has uncommitted or unexpected commits.
-
-```
-# .sync-ref (tracked by main repo)
-ed9d856
-```
-
-This gives the main repo a verifiable anchor into the `.sync` repo without merging them.
-
----
-
-## Part 2 — Per-Agent Flaws
-
----
-
-### CLAUDE-01 · Draft promotion without pre-write schema validation
-
-**Severity:** High  
-**Agent:** Claude  
-**Protocol reference:** D023 shutdown step 1, validation Layer 1 (Schema)
-
-**Flaw:**  
-Claude promoted the session-30 draft to `runtime/boot/claude.boot.yaml` as a normalization action, with no record of running `stackmind validate` before or after the write. Promoting a draft that fails schema validation would silently corrupt the canonical boot file.
-
-**Fix:**  
-The shutdown sequence must enforce: validate draft → promote → validate canonical. If either validation fails, abort the promotion and write a blocker to Claude's next-session inbox. The CLI's `stackmind shutdown` should automate this gate; it should not be possible to promote a draft without a preceding validation pass.
-
----
-
-### CLAUDE-02 · Inbox directives written but not confirmed before handoff
-
-**Severity:** Medium  
-**Agent:** Claude  
-**Protocol reference:** D022 (work order atomicity), inbox SLA rules
-
-**Flaw:**  
-Claude's "Messages to Dispatch" says the Local-LLM directive was "written to inbox." Dispatching a message and confirming receipt are different things. The handoff closes with the directive unacknowledged. If Local-LLM misses it, the normalization commit could be silently skipped.
-
-**Fix:**  
-"Messages to Dispatch" should be renamed "Messages written this session (pending read by recipient)." The distinction clarifies that the message exists on disk — Claude has already acted — but the receiving agent has not acknowledged it. TREE.yaml's per-agent `unread_inbox_count` field provides the verification loop; Claude should record it in the handoff as confirmation.
-
----
-
-### CLAUDE-03 · Session numbering notation is ambiguous
-
-**Severity:** Low  
-**Agent:** Claude  
-**Protocol reference:** Handoff report format (D023+)
-
-**Flaw:**  
-The handoff header reads "COMPLETED THIS SESSION (29→30)" while the body references "session 30." It is unclear whether the report covers work done in session 29 handed to session 30, or work done in session 30 just completed.
-
-**Fix:**  
-Standardize to: `session_completed: 30` with an optional `next_session_id: 31`. Ordinal phrasing (29→30) implies a transition; cardinal phrasing (session 30 complete) is unambiguous. Add this to the handoff report schema.
-
----
-
-### CODEX-01 · Draft snapshot written with immediately-stale `tree_version`
-
-**Severity:** High  
-**Agent:** Codex  
-**Protocol reference:** D021 (boot optimization), D023 shutdown step 1
-
-**Flaw:**  
-Codex read `TREE.yaml` at boot (tree_version 46) and then wrote its draft snapshot reflecting that version. Claude bumped TREE to version 47 in the same session window. When the draft is promoted, it will contain an incorrect tree_version — creating exactly the canonical drift the boot sequence is meant to detect and prevent.
-
-**Fix:**  
-Workers must re-read `TREE.yaml` immediately before writing their draft snapshot — not use the value cached at boot time. Boot step 2 (PEEK TREE) is an optimization for reading; it must not be used as the source for draft writes. Add an explicit pre-draft-write re-read to the shutdown sequence.
-
-```
-# Shutdown step 1 (revised):
-RE-READ runtime/TREE.yaml   ← always fresh, regardless of boot cache
-WRITE draft snapshot using fresh TREE values
-```
-
----
-
-### CODEX-02 · Untracked path `reviews/.` treated as a note, not a blocker
-
-**Severity:** High  
-**Agent:** Codex  
-**Protocol reference:** D023 shutdown step 7 (commit .sync repo), D023.2 compliance check
-
-**Flaw:**  
-Codex mentions "Existing unrelated untracked path: reviews/." under Blockers as a casual observation. In the `.sync` repo, untracked files represent uncommitted work or orphaned artifacts. The `reviews/` directory may contain review files that were never dispatched to Gemma's inbox. The D023 shutdown sequence requires all relevant paths to be committed; an untracked directory is non-compliance evidence.
-
-**Fix:**  
-Any untracked file in the `.sync` repo discovered at boot must be classified as a Blocker and reported to Claude in the same session. The CLI's `stackmind validate` Layer 3 (Protocol Compliance) should flag unexpected untracked paths as a compliance warning and block new work assignment until resolved.
-
----
-
-### CODEX-03 · No cross-validation against `INDEX.yaml` or git tags
-
-**Severity:** Medium  
-**Agent:** Codex  
-**Protocol reference:** D021 (boot sequence), key invariants
-
-**Flaw:**  
-Codex confirmed its protocol hash and validated its own snapshot, but did not check `work-orders/INDEX.yaml` or `git describe --tags` to confirm team-level state. A worker validating only its own data can be out of sync with the team without knowing it.
-
-**Fix:**  
-Add a mandatory boot step for all workers after PEEK TREE: compare `INDEX.yaml.total_completed` against `TREE.yaml.total_completed`. A mismatch signals INDEX has been updated but TREE hasn't propagated. One field comparison, near-zero token cost.
-
----
-
-### GEMMA-01 · Snapshot at `tree_version: 1` — session continuity completely broken
-
-**Severity:** Critical  
-**Agent:** Gemma  
-**Protocol reference:** D021 (boot optimization), D023.2 compliance
-
-**Flaw:**  
-Gemma reports "Synced to tree_version: 47 (was 1 in stale snapshot)." tree_version 1 is the system's initial state at runtime initialization. Gemma's snapshot had not been meaningfully updated for the entire project lifetime — meaning Gemma has been performing full TREE re-reads every session, burning 150K+ tokens each time instead of the 1K–3K target from D021. This is a complete failure of boot optimization for the QA Lead role.
-
-**Fix:**  
-The D023.2 compliance check must flag agents whose snapshot `tree_version` lags behind TREE.yaml's current `tree_version` by more than a configurable threshold (suggested: 3 versions). Claude should receive a NON_COMPLIANT notice for any such agent during TREE maintenance. Additionally, `stackmind validate` Layer 4 should compute and report the version delta for each agent's snapshot explicitly.
-
-```
-stackmind validate output (proposed):
-[WARN] gemma.boot.yaml snapshot version lag: 46 versions behind current TREE
-       → Agent may be running without session continuity
-       → Recommend: Claude to promote fresh Gemma snapshot
-```
-
----
-
-### GEMMA-02 · 10 pending review requests silently dismissed — D024 violation
-
-**Severity:** High  
-**Agent:** Gemma  
-**Protocol reference:** D024 (Mandatory Review Handoff)
-
-**Flaw:**  
-Gemma reports "Reviewed inbox: 10 pending reviews exist but all pre-date v1.0.4 release" and takes no action on them. D024 requires each review request to have a documented outcome. Silently skipping 10 reviews leaves no audit trail and could hide a review that was still required for compliance or for a WO to be formally closed.
-
-**Fix:**  
-Gemma must formally close each pre-release review request. A batch-close message to Claude's inbox is sufficient:
-
-```
-# inbox/claude/2026-06-18_gemma_batch-close.md
-Batch closing 10 pre-v1.0.4 review requests as superseded by release.
-WOs: [list each WO-ID]
-Reason: All changes incorporated into v1.0.4 (dd35298). No further action required.
-```
-
-Each original review message must then be moved to `inbox/gemma/_read/`. The CLI's `stackmind shutdown` validator should require that `inbox/<agent>/` contains zero unprocessed items before allowing the session to close.
-
----
-
-### GEMMA-03 · Quality metrics have no commit hash or test-run timestamp
-
-**Severity:** Medium  
-**Agent:** Gemma  
-**Protocol reference:** D024 (quality gate), Gemma agent contract
-
-**Flaw:**  
-Gemma's handoff states backend coverage 81.21%, frontend 86.57%, 247 tests GREEN — with no commit SHA and no test-run timestamp. These metrics are unverifiable. They could be from a prior branch, a pre-v1.0.4 state, or a run that predates Gemini's WO-055/WO-044 changes.
-
-**Fix:**  
-Quality metrics in all Gemma handoff reports must include:
-
-```yaml
-quality_metrics:
-  commit: dd35298          # exact SHA, not tag
-  branch: main
-  tested_at: 2026-06-18T...
-  backend_coverage: 81.21%
-  frontend_coverage: 86.57%
-  total_tests: 247
-  status: GREEN
-```
-
-If Gemma cannot produce a commit reference for the metrics, they must be flagged as `unverified` in the report.
-
----
-
-### GEMMA-04 · No awareness of Gemini's incoming WO-055 review request
-
-**Severity:** Medium  
-**Agent:** Gemma  
-**Protocol reference:** Inbox SLA rules, D024
-
-**Flaw:**  
-Gemini explicitly dispatches a review request to Gemma for WO-055 and WO-044 in this same session. Gemma's handoff makes no mention of it. Either the message had not been written yet when Gemma ran, or Gemma did not scan the full inbox. If Gemma's next session doesn't find this message before boot completes, the review will be silently delayed.
-
-**Fix:**  
-The D023 shutdown sequence should require agents to read and acknowledge any inbox items received during the current session window — not just items present at boot. Any new items must be listed under "Messages received this session" in the handoff report, even if their full processing is deferred to the next session.
-
----
-
-### GEMINI-01 · Local test environment failure mis-classified as non-blocking
-
-**Severity:** High  
-**Agent:** Gemini  
-**Protocol reference:** D022 (work order deliverable requirements), D023.2 compliance
-
-**Flaw:**  
-Gemini reports "Local npm test environment issues persist but do not block the build." If Gemini cannot run tests locally, all verification is delegated to CI. This means Gemini is shipping implementation changes it cannot locally validate. Environment-specific regressions would only surface in CI — after the code is committed. The bar of "build passes" is lower than "tests pass locally."
-
-**Fix:**  
-A broken local test environment must be classified as BLOCKED with a formal open WO (type: BUGFIX, assigned to Gemini, priority P2). Gemini must not submit further implementation WOs for review until either: (a) the environment is fixed, or (b) Claude explicitly documents a temporary CI-only verification exception as a Decision entry. "Doesn't block the build" is not a sufficient standard for a QA-gated system.
-
----
-
-### GEMINI-02 · WO-056 self-assigned — workers cannot plan their own next WO
-
-**Severity:** High  
-**Agent:** Gemini  
-**Protocol reference:** Authority model (workers: implementation only), D022 (WO assignment: Claude)
-
-**Flaw:**  
-Gemini writes "Once approved, proceed with WO-056 (Register YOLO models) as indicated in the assignment." Work order assignment is exclusively Claude's responsibility per the authority model. A worker planning its own next task — even based on a prior mention — risks executing stale or superseded scope without explicit authorization.
-
-**Fix:**  
-Gemini's "My Next Tasks" must only list items found in its currently assigned WOs or explicit inbox directives. If WO-056 is assigned, the handoff must cite the source: "WO-056 (assigned by Claude, inbox message 2026-06-XX)." If not formally assigned, Gemini must escalate to Claude rather than assume.
-
----
-
-### GEMINI-03 · WO-055 and WO-044 bundled into a single review request
-
-**Severity:** Medium  
-**Agent:** Gemini  
-**Protocol reference:** D024 step 2 — one review file per work order
-
-**Flaw:**  
-D024 requires one review request file per work order. Bundling WO-055 and WO-044 into a single file makes partial approval/rejection impossible and breaks per-WO auditability. If Gemma approves one but not the other, there is no clean mechanism to record that outcome.
-
-**Fix:**  
-Generate separate review files:
-
-```
-inbox/gemma/2026-06-18_gemini_WO-055-review.md
-inbox/gemma/2026-06-18_gemini_WO-044-review.md
-```
-
-The CLI's `stackmind shutdown` validator should detect any review file referencing multiple WO IDs and flag it as a protocol violation before the session is allowed to close.
-
----
-
-### GEMINI-04 · Post-release changes shipped with no declared release target
-
-**Severity:** Medium  
-**Agent:** Gemini  
-**Protocol reference:** D031 (version management), release ownership (CEO + Claude)
-
-**Flaw:**  
-WO-055 and WO-044 were completed in the current session while the system is already at v1.0.4 LIVE. These changes have not gone through Gemma review yet, so they cannot be part of v1.0.4. There is no mention in Gemini's handoff of whether these require a v1.0.5 release or will be folded retroactively — meaning versioning is undefined for active changes in production.
-
-**Fix:**  
-Any implementation WO completed after a release tag must include a `release_target` field in the completion notice sent to Claude's inbox:
-
-```yaml
-# inbox/claude/2026-06-18_gemini_WO-055-complete.md
-wo_id: WO-055
-status: COMPLETE (pending Gemma review)
-release_target: v1.0.5   ← required field
-commit: <branch/sha>
-```
-
-Workers must declare a release target; Claude makes the final versioning decision and documents it. Shipping without a declared release target is a protocol violation.
-
----
-
-### LOCAL-LLM-01 · Overclaims scope — describes Claude's work as its own
-
-**Severity:** High  
-**Agent:** Local-LLM  
-**Protocol reference:** Authority model, Forbidden Actions ("Modify canonical snapshots")
-
-**Flaw:**  
-Local-LLM's completed items include "Fixed canonical drift" and "Promoted session-30 draft → canonical claude.boot.yaml." These were Claude's actions. Local-LLM was the git executor — it committed files Claude had already mutated. An audit trail showing Local-LLM promoted a boot snapshot it does not own looks like a Forbidden Actions violation, even if it was authorized.
-
-**Fix:**  
-Local-LLM's handoff must clearly distinguish delegated actions from initiated actions:
-
-```
-✅ COMPLETED THIS SESSION:
-- Executed commit of Claude's canonical state normalization
-  (per Claude inbox directive 2026-06-10_claude_normalize.md)
-  → Committed: runtime/boot/claude.boot.yaml, runtime/TREE.yaml
-  → Commit SHA: ed9d856
-  → Commit repo: .sync/
-```
-
-The source directive must always be cited. Summarizing Claude's work as Local-LLM's own is misleading and breaks the audit trail.
-
----
-
-### LOCAL-LLM-02 · Committed without running `stackmind validate`
-
-**Severity:** High  
-**Agent:** Local-LLM  
-**Protocol reference:** D025 (Destructive Operations Safeguard), D023 shutdown step 7
-
-**Flaw:**  
-Local-LLM's handoff shows no evidence of running `stackmind validate` before committing ed9d856. A commit of malformed YAML to `runtime/boot/claude.boot.yaml` or `TREE.yaml` would corrupt the canonical state source of truth for the entire agent team.
-
-**Fix:**  
-The commit directive Claude writes to Local-LLM's inbox must include an explicit pre-commit validation requirement. Local-LLM's completion notice must include the validation result:
-
-```yaml
-# inbox/claude/2026-06-18_local-llm_commit-complete.md
-validation_run: stackmind validate .sync/
-validation_result: PASS (4/4 layers)
-committed_sha: ed9d856
-```
-
-The `stackmind shutdown` validator for Local-LLM should refuse to close without a recorded validation pass for any session that touched canonical files.
-
----
-
-### LOCAL-LLM-03 · Committed tree_version is unconfirmed — 46 or 47?
-
-**Severity:** Medium  
-**Agent:** Local-LLM  
-**Protocol reference:** D023 (audit trail), TREE.yaml ownership
-
-**Flaw:**  
-Given the race condition between Claude bumping `tree_version` to 47 and Codex's draft capturing version 46, it is unconfirmed which value was in `TREE.yaml` at the moment Local-LLM committed. There is no post-commit readback in the handoff to verify committed file contents.
-
-**Fix:**  
-After every `.sync` commit touching canonical files, Local-LLM must run a post-commit readback and include the result in its completion notice:
-
-```
-Post-commit verification:
-  TREE.yaml tree_version: 47  ✓
-  claude.boot.yaml version: v1.0.4  ✓
-  commit: ed9d856
-```
-
-This creates a verifiable record that committed content matches what was intended.
-
----
-
-## Part 3 — Priority Matrix
-
-| Priority | ID | Flaw | Agents affected |
+| Phase | WO Type | Priority | Primary Agent |
 |---|---|---|---|
-| Critical | PLAT-01 | Boot integrity validates stale vs stale | All |
-| Critical | GEMMA-01 | Snapshot at tree_version: 1 — continuity broken | Gemma |
-| High | PLAT-02 | `tree_version` used as broadcast signal | All |
-| High | PLAT-03 | No concurrency guard on `.sync` mutations | Claude, Codex, Local-LLM |
-| High | CLAUDE-01 | Draft promotion without schema validation | Claude |
-| High | CODEX-01 | Draft snapshot written with stale tree_version | Codex |
-| High | CODEX-02 | Untracked `reviews/.` treated as a note | Codex |
-| High | GEMMA-02 | 10 review requests silently dismissed | Gemma |
-| High | GEMINI-01 | Local test failure mis-classified as non-blocking | Gemini |
-| High | GEMINI-02 | WO-056 self-assigned by worker | Gemini |
-| High | LOCAL-LLM-01 | Overclaims Claude's work as its own | Local-LLM |
-| High | LOCAL-LLM-02 | Committed without `stackmind validate` | Local-LLM |
-| Medium | PLAT-04 | Normalization actions bypass decision log | Claude |
-| Medium | PLAT-05 | `.sync` git-ignore creates audit blindness | All |
-| Medium | CLAUDE-02 | Inbox directives unconfirmed before handoff | Claude |
-| Medium | CODEX-03 | No cross-validation against INDEX.yaml | Codex |
-| Medium | GEMMA-03 | Quality metrics without commit hash | Gemma |
-| Medium | GEMMA-04 | No awareness of Gemini's incoming review request | Gemma |
-| Medium | GEMINI-03 | Two WOs bundled in one review request | Gemini, Gemma |
-| Medium | GEMINI-04 | Post-release changes without declared release target | Gemini |
-| Medium | LOCAL-LLM-03 | Committed tree_version unconfirmed | Local-LLM |
-| Low | CLAUDE-03 | Session numbering notation ambiguous | Claude |
+| Phase 0 | PHASE | P0 | Claude (CEO decision) |
+| Phase 1 | FEATURE | P0 | Codex |
+| Phase 2 | FEATURE | P0 | Codex |
+| Phase 3 | FEATURE | P1 | Codex |
+| Phase 4 | FEATURE | P1 | Codex |
+| Phase 5 | FEATURE | P1 | Codex |
+| Phase 6 | FEATURE | P2 | Codex/Gemini |
+| Phase 7 | FEATURE | P2 | Codex + Gemini |
+| Phase 8 | FEATURE | P3 | TBD (gated) |
 
 ---
 
-## Part 4 — Recommended Implementation Order
+## Risk Register
 
-The following sequence addresses root causes before symptoms.
-
-**Phase 1 — Fix the validator (PLAT-01, PLAT-02)**  
-These two changes eliminate the entire class of undetected canonical drift. Everything else depends on agents being able to trust their own boot checks. Implement in `stackmind validate` Layer 4.
-
-**Phase 2 — Add write-ordering (PLAT-03)**  
-Implement the `.sync/runtime/LOCK` mechanism in the CLI. Without this, Phase 1 improvements can still be undermined by concurrent writes. Adds lock creation to `stackmind init` and lock enforcement to `stackmind shutdown`.
-
-**Phase 3 — Fix draft write timing (CODEX-01 + all workers)**  
-Update the shutdown sequence to re-read `TREE.yaml` immediately before writing the draft snapshot. This is a one-line protocol change with high impact on snapshot reliability.
-
-**Phase 4 — Per-agent protocol compliance**  
-Address the remaining per-agent flaws. Most are enforcement issues (one review file per WO, validation before commit, explicit release targets) that can be caught by extending the `stackmind shutdown` validator.
-
-**Phase 5 — Audit trail completeness (PLAT-04, PLAT-05)**  
-Add NORMALIZATION decision type and `.sync-ref` anchoring. Lower urgency but required for a complete audit trail as the project scales.
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Determinism not achievable with LibCST/Jedi | Critical | Compile-twice-diff gate catches instantly; fallback to `ast` module |
+| Registry merge conflicts at scale | High | Sharding by NodeID prefix (C1); two branches adding different symbols never conflict |
+| Rename detection false positives | Medium | False fusion impossible by construction (§8.4); only continuity is heuristic |
+| Git churn on committed T1 (large repos) | Medium | Designed exit: demote to T2-with-snapshot or DB backend (§20.3) |
+| Phase 0 blocked indefinitely | High | CEO must sign off; escalate if no response |
+| Jedi resolution cost on cold repos | Medium | Resolution cache keyed by (content-hash, compiler-version); parallel parse |
 
 ---
 
-*This document was generated from runtime analysis of session handoffs dated 2026-06-18. All flaw IDs are unique and traceable to individual agent reports. Recommend assigning PLAT-01 and PLAT-02 as the first WOs for the next sprint.*
+## Immediate Next Actions
+
+1. **CEO:** Sign off on RFC-001/002/003 to close Phase 0 gate
+2. **Claude:** Create Phase 0 work order; assign review of RFCs to Gemma
+3. **Local-LLM:** Commit `.sync` folder (directive already dispatched)
+4. **All:** No implementation code until Phase 0 gate is explicitly closed
+
+---
+
+## Relationship to Prior Plans
+
+| Document | Status | Disposition |
+|---|---|---|
+| `PLAN.md` (v1 — runtime flaw analysis) | **Superseded** | Fixes implemented in v1.2.0; no longer actionable |
+| `PLAN-v1.md` | **Superseded** | Historical reference only |
+| `docs/SMPOC/SKC-IMPLEMENTATION-PLAN.md` | **Upstream detail** | Phase-level detail document; this PLAN.md is the authoritative roadmap |
+| `docs/STACKMIND_ARCHITECTURE.md` | **Authoritative** | The handbook this plan implements |
+| `docs/rfcs/RFC-001–006` | **Authoritative** | Per-subsystem specifications |
+| `docs/SKC-STATUS.md` | **Current** | Planning handoff brief (pre-implementation status) |
+
+---
+
+*This plan is governed like everything else in StackMind. Changes require a Decision entry or CEO/Claude approval. Implementation begins only after Phase 0 closes.*
