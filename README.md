@@ -82,6 +82,17 @@ truncated: False
 
 Returns a bounded, ranked bundle with provenance — ready to paste into an agent prompt.
 
+### Framework Intelligence Compilers (Phase 1)
+
+StackMind includes specialized AST compilers that statically map Python web & data frameworks:
+
+- ⚡ **Pydantic**: Model definitions, field constraints, type validation graphs
+- 🚀 **FastAPI**: Endpoint routes, path params, auth dependencies, middleware mapping
+- 🗄️ **SQLAlchemy**: ORM models, foreign keys, 1-to-N relationships, schema graphs
+- 🎯 **Django**: URL routing, views, models, `@receiver` signals, middleware
+- ⚡ **Celery**: Asynchronous tasks, queues, periodic beat schedules, `.delay()`/`.apply_async()` invocation flows
+- 📜 **Alembic**: Migration DAG history, schema operations (`op.create_table`), point-in-time schema reconstruction (`--at <rev>`)
+
 ---
 
 ## Commands
@@ -97,6 +108,18 @@ Returns a bounded, ranked bundle with provenance — ready to paste into an agen
 | `graph explain "symbol"` | Show callers + callees of a symbol |
 | `graph stats` | Node/edge/revision counts |
 | `graph watch` | File watcher — auto-recompile on save |
+| **Framework Intelligence** | |
+| `graph models` | List Pydantic models & validation schemas |
+| `graph routes` | List FastAPI routes & endpoints |
+| `graph auth` | List FastAPI auth dependencies |
+| `graph middleware` | List FastAPI middleware registrations |
+| `graph schema` | Show SQLAlchemy schema graph or Alembic state (`--at <rev>`) |
+| `graph relations` | Show SQLAlchemy ORM model relationships |
+| `graph django-urls` | List Django URL patterns & routing |
+| `graph django-signals` | List Django signal handlers & sender wiring |
+| `graph tasks` | List Celery tasks & periodic beat schedules |
+| `graph task-flow` | Map caller code to asynchronous task execution |
+| `graph migrations` | List Alembic migration history DAG sequentially |
 
 ---
 
