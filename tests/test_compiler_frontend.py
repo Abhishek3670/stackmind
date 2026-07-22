@@ -43,8 +43,8 @@ def test_compile_twice_is_byte_identical(fresh_project):
 def test_ir_byte_identical_across_fresh_project_same_inputs(tmp_path):
     first = tmp_path / "first"
     second = tmp_path / "second"
-    init(first, name="First", no_git=True)
-    init(second, name="Second", no_git=True)
+    init(first, name="Same", no_git=True)
+    init(second, name="Same", no_git=True)
     source = (
         "from helpers import answer\n\n"
         "def main():\n"

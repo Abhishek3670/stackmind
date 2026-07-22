@@ -442,6 +442,11 @@ class EnricherQueue:
             temporary = path.with_suffix(path.suffix + '.tmp')
             try:
                 temporary.write_text(payload, encoding='utf-8', newline='\n')
+                if os.name == 'nt' and path.exists():
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
                 os.replace(temporary, path)
             finally:
                 if temporary.exists():

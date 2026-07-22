@@ -17,6 +17,14 @@ from .sqlalchemy_compiler import augment_parsed_files as augment_sqlalchemy_file
 from .django_compiler import augment_parsed_files as augment_django_files
 from .celery_compiler import augment_parsed_files as augment_celery_files
 from .alembic_compiler import augment_parsed_files as augment_alembic_files
+from .doc_compiler import augment_parsed_files as augment_doc_files
+from .config_compiler import augment_parsed_files as augment_config_files
+from .cicd_compiler import augment_parsed_files as augment_cicd_files
+from .test_compiler import augment_parsed_files as augment_test_files
+from .cycle_compiler import augment_parsed_files as augment_cycle_files
+from .dead_code_compiler import augment_parsed_files as augment_dead_code_files
+from .health_compiler import augment_parsed_files as augment_health_files
+from .impact_compiler import augment_parsed_files as augment_impact_files
 
 try:  # pragma: no cover - optional dependency path.
     import jedi  # type: ignore
@@ -44,6 +52,14 @@ def compile_project(
     augment_django_files(parsed_files)
     augment_celery_files(parsed_files)
     augment_alembic_files(parsed_files)
+    augment_doc_files(parsed_files, project_path=project_path)
+    augment_config_files(parsed_files, project_path=project_path)
+    augment_cicd_files(parsed_files, project_path=project_path)
+    augment_test_files(parsed_files, project_path=project_path)
+    augment_cycle_files(parsed_files, project_path=project_path)
+    augment_dead_code_files(parsed_files, project_path=project_path)
+    augment_health_files(parsed_files, project_path=project_path)
+    augment_impact_files(parsed_files, project_path=project_path)
 
     sync_dir = project_path / ".sync"
     external_project = not (sync_dir / "runtime").exists()
