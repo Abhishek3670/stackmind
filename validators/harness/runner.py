@@ -241,6 +241,18 @@ class AgentRunner:
             )
             poll_ms = int((time.monotonic() - poll_started) * 1000)
 
+            # Pre-execution plan verification
+            from validators.harness.contract_gate import verify_pre_execution
+            try:
+                verify_pre_execution(self.project_path, self.agent, task, context)
+            except Exception as exc:
+                return HarnessRunResult(
+                    status='blocked',
+                    persisted=False,
+                    task_id=task.identifier,
+                    reason=f'Pre-execution contract validation failed: {exc}',
+                )
+
             retrieval_started = time.monotonic()
             retrieval = self.search_tool.search(task.query, limit=3)
             retrieval_ms = int((time.monotonic() - retrieval_started) * 1000)
@@ -264,6 +276,18 @@ class AgentRunner:
                     persisted=False,
                     task_id=task.identifier,
                     reason=str(exc),
+                )
+
+            # Post-execution diff verification
+            from validators.harness.contract_gate import verify_post_execution
+            try:
+                verify_post_execution(self.project_path, self.agent, task, decision)
+            except Exception as exc:
+                return HarnessRunResult(
+                    status='blocked',
+                    persisted=False,
+                    task_id=task.identifier,
+                    reason=f'Post-execution contract validation failed: {exc}',
                 )
 
             stage_inputs = {

@@ -14,6 +14,7 @@ from validators.knowledge.projections.reverse_index import lookup_reverse_edges
 from validators.knowledge.projections.search import search_symbols
 from validators.knowledge.registry import SymbolRegistry
 from validators.knowledge.storage import latest_revision_id, node_path, revision_path
+from validators.knowledge.contract import AgentContract, ContractAccessDenied, ContractExpiredError
 
 
 @dataclass(frozen=True)
@@ -124,12 +125,53 @@ class ContextBundle:
 class KnowledgeAPI:
     """Read-only query surface for compiled StackMind knowledge."""
 
-    def __init__(self, project_path: Path) -> None:
+    def __init__(self, project_path: Path, contract: AgentContract | str | Path | None = None) -> None:
         self.project_path = project_path.resolve()
         self.registry = SymbolRegistry(self.project_path)
+        if contract is not None and not isinstance(contract, AgentContract):
+            self.contract = AgentContract.load(contract, self.project_path)
+        else:
+            self.contract = contract
+        self._cached_ir = None
 
-    def lookup(self, needle: str, *, limit: int = 10) -> KnowledgeEnvelope:
+    @property
+    def ir(self):
+        if self._cached_ir is None:
+            from validators.knowledge.storage import read_ir
+            self._cached_ir = read_ir(self.project_path)
+        return self._cached_ir
+
+    def _resolve_contract(self, contract: AgentContract | str | Path | None) -> AgentContract | None:
+        if contract is None:
+            return self.contract
+        if isinstance(contract, AgentContract):
+            return contract
+        return AgentContract.load(contract, self.project_path)
+
+    def _enforce_node(self, node_id: str, contract: AgentContract | str | Path | None = None) -> None:
+        active_contract = self._resolve_contract(contract)
+        if active_contract:
+            if active_contract.is_expired():
+                raise ContractExpiredError(f"Contract {active_contract.work_order} has expired")
+            if not active_contract.is_node_in_scope(node_id, self.ir):
+                raise ContractAccessDenied(
+                    f"Access to node {node_id} is denied by contract {active_contract.work_order}"
+                )
+
+    def _check_expiration(self, contract: AgentContract | str | Path | None = None) -> None:
+        active_contract = self._resolve_contract(contract)
+        if active_contract and active_contract.is_expired():
+            raise ContractExpiredError(f"Contract {active_contract.work_order} has expired")
+
+    def lookup(
+        self,
+        needle: str,
+        *,
+        limit: int = 10,
+        contract: AgentContract | str | Path | None = None,
+    ) -> KnowledgeEnvelope:
         """Resolve one symbol by NodeID, birth key, current name, or alias."""
+        self._check_expiration(contract)
         revision, git_commit = self._revision_meta()
         stale = self._is_stale()
         candidates: list[tuple[int, str, KnowledgeResult]] = []
@@ -142,6 +184,7 @@ class KnowledgeAPI:
                 confidence=confidence,
                 alias_matched=alias_matched,
                 reason='lookup',
+                contract=contract,
             )
             candidates.append((rank, result.qualified_name.lower(), result))
         ordered = tuple(item[2] for item in sorted(candidates)[:limit])
@@ -161,8 +204,10 @@ class KnowledgeAPI:
         path_contains: str | None = None,
         qualified_name_contains: str | None = None,
         limit: int = 10,
+        contract: AgentContract | str | Path | None = None,
     ) -> KnowledgeEnvelope:
         """Filter active nodes by deterministic attributes without mutating state."""
+        self._check_expiration(contract)
         revision, git_commit = self._revision_meta()
         stale = self._is_stale()
         lowered_kind = (kind or '').lower()
@@ -172,7 +217,7 @@ class KnowledgeAPI:
         results: list[KnowledgeResult] = []
 
         for record in self._active_records():
-            node = self._load_node_for_record(record)
+            node = self._load_node_for_record(record, contract=contract)
             if node is None:
                 continue
             if lowered_kind and str(node.get('kind', '')).lower() != lowered_kind:
@@ -193,6 +238,7 @@ class KnowledgeAPI:
                     node,
                     confidence=1.0,
                     reason='filter',
+                    contract=contract,
                 )
             )
 
@@ -217,11 +263,13 @@ class KnowledgeAPI:
         direction: str = 'outbound',
         depth: int = 1,
         limit: int = 25,
+        contract: AgentContract | str | Path | None = None,
     ) -> KnowledgeEnvelope:
         """Traverse inbound or outbound graph edges without reading source files."""
+        self._check_expiration(contract)
         revision, git_commit = self._revision_meta()
         stale = self._is_stale()
-        seed = self._resolve_one(target)
+        seed = self._resolve_one(target, contract=contract)
         if seed is None:
             return KnowledgeEnvelope(
                 revision=revision,
@@ -238,13 +286,13 @@ class KnowledgeAPI:
             current_id, current_depth = queue.pop(0)
             if current_depth >= depth:
                 continue
-            for edge in self._edges_for(current_id, relation=relation, direction=direction):
+            for edge in self._edges_for(current_id, relation=relation, direction=direction, contract=contract):
                 neighbor_id = edge['neighbor_id']
                 next_depth = current_depth + 1
                 known_depth = seen_depths.get(neighbor_id)
                 if known_depth is not None and known_depth <= next_depth:
                     continue
-                neighbor = self._lookup_node_by_id(neighbor_id)
+                neighbor = self._lookup_node_by_id(neighbor_id, contract=contract)
                 if neighbor is None:
                     continue
                 seen_depths[neighbor_id] = next_depth
@@ -263,6 +311,7 @@ class KnowledgeAPI:
                         'source_id': edge.get('source_id'),
                         'target_name': edge.get('target_name'),
                     },
+                    contract=contract,
                 )
                 results_by_node[neighbor_id] = (next_depth, result)
 
@@ -296,12 +345,14 @@ class KnowledgeAPI:
         *,
         limit: int = 10,
         query_embedding: Sequence[float] | None = None,
+        contract: AgentContract | str | Path | None = None,
     ) -> KnowledgeEnvelope:
         """Search by embedding similarity when available, else text-search fallback."""
+        self._check_expiration(contract)
         revision, git_commit = self._revision_meta()
         stale = self._is_stale()
         if query_embedding is not None:
-            semantic_results = self._semantic_search(query_embedding, limit=limit)
+            semantic_results = self._semantic_search(query_embedding, limit=limit, contract=contract)
             if semantic_results:
                 return KnowledgeEnvelope(
                     revision=revision,
@@ -315,7 +366,7 @@ class KnowledgeAPI:
         results = []
         max_score = max((int(item.get('score', 0)) for item in text_hits), default=1)
         for item in text_hits:
-            node = self._lookup_node_by_id(str(item['node_id']))
+            node = self._lookup_node_by_id(str(item['node_id']), contract=contract)
             if node is None:
                 continue
             score = int(item.get('score', 0))
@@ -325,6 +376,7 @@ class KnowledgeAPI:
                     node,
                     confidence=confidence,
                     reason='text-search',
+                    contract=contract,
                 )
             )
         return KnowledgeEnvelope(
@@ -335,7 +387,13 @@ class KnowledgeAPI:
             results=tuple(results),
         )
 
-    def callers(self, target: str, *, limit: int = 25) -> KnowledgeEnvelope:
+    def callers(
+        self,
+        target: str,
+        *,
+        limit: int = 25,
+        contract: AgentContract | str | Path | None = None,
+    ) -> KnowledgeEnvelope:
         """Return direct callers of a symbol."""
         return self.traverse(
             target,
@@ -343,6 +401,7 @@ class KnowledgeAPI:
             direction='inbound',
             depth=1,
             limit=limit,
+            contract=contract,
         )
 
     def impact(
@@ -351,6 +410,7 @@ class KnowledgeAPI:
         *,
         depth: int = 3,
         limit: int = 50,
+        contract: AgentContract | str | Path | None = None,
     ) -> KnowledgeEnvelope:
         """Return transitive inbound callers impacted by changing a symbol."""
         return self.traverse(
@@ -359,13 +419,20 @@ class KnowledgeAPI:
             direction='inbound',
             depth=depth,
             limit=limit,
+            contract=contract,
         )
 
-    def explain(self, target: str) -> dict[str, Any]:
+    def explain(
+        self,
+        target: str,
+        *,
+        contract: AgentContract | str | Path | None = None,
+    ) -> dict[str, Any]:
         """Explain one symbol using deterministic facts and optional AI summary."""
+        self._check_expiration(contract)
         revision, git_commit = self._revision_meta()
         stale = self._is_stale()
-        subject = self._resolve_one(target)
+        subject = self._resolve_one(target, contract=contract)
         if subject is None:
             return {
                 'git_commit': git_commit,
@@ -382,6 +449,7 @@ class KnowledgeAPI:
             direction='outbound',
             depth=1,
             limit=10,
+            contract=contract,
         )
         inbound = self.traverse(
             subject.node_id,
@@ -389,6 +457,7 @@ class KnowledgeAPI:
             direction='inbound',
             depth=1,
             limit=10,
+            contract=contract,
         )
         return {
             'git_commit': git_commit,
@@ -406,19 +475,26 @@ class KnowledgeAPI:
         token_budget: int = 1200,
         limit: int = 8,
         query_embedding: Sequence[float] | None = None,
+        contract: AgentContract | str | Path | None = None,
     ) -> ContextBundle:
         """Assemble a bounded context bundle for agent prompts."""
-        seed_hits = self.lookup(query, limit=max(1, limit))
+        self._check_expiration(contract)
+        seed_hits = self.lookup(query, limit=max(1, limit), contract=contract)
         if seed_hits.results:
             seed_envelope = seed_hits
         else:
-            seed_envelope = self.search(query, limit=max(3, limit), query_embedding=query_embedding)
+            seed_envelope = self.search(
+                query,
+                limit=max(3, limit),
+                query_embedding=query_embedding,
+                contract=contract,
+            )
 
         ranked: dict[str, tuple[int, KnowledgeResult]] = {}
         for index, result in enumerate(seed_envelope.results[: max(1, min(limit, 3))]):
             ranked[result.node_id] = (100 - (index * 5), result)
 
-            inbound = self.callers(result.node_id, limit=3)
+            inbound = self.callers(result.node_id, limit=3, contract=contract)
             for neighbor in inbound.results:
                 score = 80 - (10 * int(neighbor.metadata.get('depth', 1)))
                 existing = ranked.get(neighbor.node_id)
@@ -431,6 +507,7 @@ class KnowledgeAPI:
                 direction='outbound',
                 depth=1,
                 limit=3,
+                contract=contract,
             )
             for neighbor in outbound.results:
                 score = 70 - (10 * int(neighbor.metadata.get('depth', 1)))
@@ -496,6 +573,7 @@ class KnowledgeAPI:
         *,
         relation: str | None,
         direction: str,
+        contract: AgentContract | str | Path | None = None,
     ) -> tuple[dict[str, Any], ...]:
         if direction == 'inbound':
             return tuple(
@@ -507,7 +585,7 @@ class KnowledgeAPI:
                 for edge in lookup_reverse_edges(self.project_path, node_id, relation=relation)
                 if edge.get('source_id')
             )
-        node = self._lookup_node_by_id(node_id)
+        node = self._lookup_node_by_id(node_id, contract=contract)
         if node is None:
             return ()
         outbound = node.get('deterministic', {}).get('outgoing', [])
@@ -545,27 +623,29 @@ class KnowledgeAPI:
             for line in status.splitlines()
         )
 
-    def _load_node_for_record(self, record: dict[str, Any]) -> dict[str, Any] | None:
+    def _load_node_for_record(self, record: dict[str, Any], contract: AgentContract | str | Path | None = None) -> dict[str, Any] | None:
         node_id = str(record.get('node_id', ''))
         kind = str(record.get('kind', ''))
         if not node_id or not kind:
             return None
+        self._enforce_node(node_id, contract)
         path = node_path(self.project_path, kind, node_id)
         if not path.exists():
             return None
         return json.loads(path.read_text(encoding='utf-8'))
 
-    def _lookup_node_by_id(self, node_id: str) -> dict[str, Any] | None:
+    def _lookup_node_by_id(self, node_id: str, contract: AgentContract | str | Path | None = None) -> dict[str, Any] | None:
+        self._enforce_node(node_id, contract)
         record = self.registry.load(node_id)
         if record is None:
             return None
-        return self._load_node_for_record(record)
+        return self._load_node_for_record(record, contract=contract)
 
-    def _resolve_one(self, needle: str) -> KnowledgeResult | None:
-        exact = self.lookup(needle, limit=1)
+    def _resolve_one(self, needle: str, contract: AgentContract | str | Path | None = None) -> KnowledgeResult | None:
+        exact = self.lookup(needle, limit=1, contract=contract)
         if exact.results:
             return exact.results[0]
-        searched = self.search(needle, limit=1)
+        searched = self.search(needle, limit=1, contract=contract)
         if searched.results:
             return searched.results[0]
         return None
@@ -578,7 +658,11 @@ class KnowledgeAPI:
         alias_matched: bool = False,
         reason: str | None = None,
         metadata: dict[str, Any] | None = None,
+        contract: AgentContract | str | Path | None = None,
     ) -> KnowledgeResult:
+        node_id = str(node.get('node_id', ''))
+        if node_id:
+            self._enforce_node(node_id, contract)
         deterministic = node.get('deterministic', {})
         ai_block = node.get('ai', {})
         summary = ai_block.get('summary') if isinstance(ai_block, dict) else None
@@ -605,14 +689,19 @@ class KnowledgeAPI:
         confidence: float,
         alias_matched: bool = False,
         reason: str | None = None,
+        contract: AgentContract | str | Path | None = None,
     ) -> KnowledgeResult:
-        node = self._load_node_for_record(record)
+        node_id = str(record.get('node_id', ''))
+        if node_id:
+            self._enforce_node(node_id, contract)
+        node = self._load_node_for_record(record, contract=contract)
         if node is not None:
             return self._result_from_node(
                 node,
                 confidence=confidence,
                 alias_matched=alias_matched,
                 reason=reason,
+                contract=contract,
             )
 
         current = record.get('current', {})
@@ -646,10 +735,17 @@ class KnowledgeAPI:
         query_embedding: Sequence[float],
         *,
         limit: int,
+        contract: AgentContract | str | Path | None = None,
     ) -> tuple[KnowledgeResult, ...]:
         scored: list[tuple[float, KnowledgeResult]] = []
         for record in self._active_records():
-            node = self._load_node_for_record(record)
+            node_id = str(record.get('node_id', ''))
+            try:
+                if node_id:
+                    self._enforce_node(node_id, contract)
+            except (ContractAccessDenied, ContractExpiredError):
+                continue
+            node = self._load_node_for_record(record, contract=contract)
             if node is None:
                 continue
             deterministic = node.get('deterministic', {})
@@ -671,6 +767,7 @@ class KnowledgeAPI:
                         node,
                         confidence=round(score, 4),
                         reason='semantic-search',
+                        contract=contract,
                     ),
                 )
             )

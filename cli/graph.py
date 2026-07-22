@@ -1487,4 +1487,9 @@ def _reconstruct_schema_at(migrations: list[dict[str, Any]], target_rev: str | N
     return schema
 
 
+from cli.contract import contract_group, explain_denial_command, scope_command
+graph.add_command(contract_group, name="contract")
+graph.add_command(explain_denial_command, name="explain-denial")
+graph.add_command(scope_command, name="scope")
+
 __all__ = ['graph']

@@ -1,0 +1,117 @@
+"""Harness Integration & Contract Gate (PLANv3 §1.4)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+from validators.knowledge.contract import (
+    AgentContract,
+    ContractAccessDenied,
+    ContractExpiredError,
+    path_to_module,
+    module_matches,
+)
+from validators.knowledge.api import KnowledgeAPI, ContextBundle
+
+def load_harness_contract(project_path: Path, agent: str, work_order_id: str | None) -> AgentContract | None:
+    """Attempt to locate and load a structured contract for the current harness task."""
+    # 1. Search for work order contract (e.g. .sync/contracts/WO-142.yaml)
+    if work_order_id:
+        try:
+            from cli.contract import find_contract
+            path = find_contract(work_order_id, project_path)
+            if path.exists():
+                return AgentContract.load(path, project_path)
+        except (FileNotFoundError, Exception):
+            pass
+            
+    # 2. Search for agent contract (e.g. .sync/agents/codex.contract.yaml)
+    agent_contract_path = project_path / ".sync" / "agents" / f"{agent}.contract.yaml"
+    if agent_contract_path.exists():
+        try:
+            return AgentContract.load(agent_contract_path, project_path)
+        except Exception:
+            pass
+        
+    return None
+
+def verify_pre_execution(
+    project_path: Path,
+    agent: str,
+    task: Any,  # HarnessTask
+    context: ContextBundle,
+) -> None:
+    """Pre-execution validation: verify contract is valid and not expired."""
+    contract = load_harness_contract(project_path, agent, task.work_order_id)
+    if contract is None:
+        return
+        
+    # Check expiration
+    if contract.is_expired():
+        raise ContractExpiredError(f"Contract {contract.work_order} has expired")
+        
+    # Verify work order ID matching
+    if task.work_order_id and task.work_order_id != contract.work_order:
+        raise ContractAccessDenied(
+            f"Task work order {task.work_order_id} does not match contract work order {contract.work_order}"
+        )
+
+def verify_post_execution(
+    project_path: Path,
+    agent: str,
+    task: Any,  # HarnessTask
+    decision: Any,  # HarnessDecision
+) -> None:
+    """Post-execution validation: verify decision output (modified files, budget) against contract."""
+    contract = load_harness_contract(project_path, agent, task.work_order_id)
+    if contract is None:
+        return
+        
+    # Check expiration
+    if contract.is_expired():
+        raise ContractExpiredError(f"Contract {contract.work_order} has expired")
+        
+    # 1. Check write mode (read-only vs read-write)
+    modified_files = decision.modified_files
+    if modified_files:
+        if contract.write_mode == "read-only":
+            raise ContractAccessDenied(
+                f"Contract {contract.work_order} is read-only but decision modified {len(modified_files)} file(s)"
+            )
+            
+    # 2. Check files touched budget
+    max_files = contract.budget.get("max_files_touched")
+    if max_files is not None and len(modified_files) > max_files:
+        raise ContractAccessDenied(
+            f"Decision modified {len(modified_files)} file(s), exceeding budget max_files_touched limit of {max_files}"
+        )
+        
+    # 3. Check scope allowed/denied for each modified file
+    api = KnowledgeAPI(project_path)
+    for file_path in modified_files:
+        mod = path_to_module(file_path)
+        
+        # Deny check
+        for deny_rule in contract.deny_rules:
+            pattern = deny_rule.get("module")
+            if pattern and module_matches(mod, pattern):
+                raise ContractAccessDenied(
+                    f"Modification to file {file_path} is explicitly denied by rule: {pattern}"
+                )
+                
+        # Allow check
+        allowed = False
+        module_nodes = [s for s in api.ir.symbols if path_to_module(s.path) == mod]
+        if module_nodes:
+            allowed = any(contract.is_node_in_scope(s.node_id, api.ir) for s in module_nodes)
+        else:
+            # File might be new, check module pattern match directly
+            for allow_rule in contract.allow_rules:
+                pattern = allow_rule.get("module")
+                if pattern and module_matches(mod, pattern):
+                    allowed = True
+                    break
+        if not allowed:
+            raise ContractAccessDenied(
+                f"Modification to file {file_path} is outside allowed contract scope"
+            )
