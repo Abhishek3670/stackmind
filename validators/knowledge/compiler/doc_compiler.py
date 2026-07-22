@@ -27,6 +27,7 @@ EXCLUDED_DIRS = {
     "site-packages",
     "build",
     "dist",
+    ".pytest-tmp",
 }
 
 LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -43,12 +44,15 @@ def augment_parsed_files(
 
     if project_path is not None:
         project_path = project_path.resolve()
-        for path in sorted(project_path.rglob("*.md")):
-            rel_parts = path.relative_to(project_path).parts
-            if any(part in EXCLUDED_DIRS for part in rel_parts):
-                continue
-            rel_str = path.relative_to(project_path).as_posix()
-            doc_paths.append((rel_str, path))
+        import os
+        for dirpath, dirnames, filenames in os.walk(project_path):
+            dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
+            for filename in filenames:
+                if filename.endswith(".md"):
+                    path = Path(dirpath) / filename
+                    rel_str = path.relative_to(project_path).as_posix()
+                    doc_paths.append((rel_str, path))
+        doc_paths.sort(key=lambda item: item[0])
 
     # Also check if any .md files are already in parsed_files
     existing_paths = {p.path for p in parsed_files}

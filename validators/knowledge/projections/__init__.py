@@ -121,9 +121,30 @@ def _rewrite_projection_root(root: Path, documents: dict[str, dict]) -> tuple[Pa
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(canonical_json(document), encoding='utf-8', newline='\n')
 
-    if root.exists():
-        shutil.rmtree(root)
-    os.replace(temp_root, root)
+    root.mkdir(parents=True, exist_ok=True)
+    # Delete files in existing root
+    for p in list(root.glob("**/*")):
+        if p.is_file():
+            try:
+                p.unlink()
+            except Exception:
+                pass
+
+    # Move files from temp_root to root
+    for p in sorted(temp_root.glob("**/*")):
+        if p.is_file():
+            rel = p.relative_to(temp_root)
+            dest = root / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.exists():
+                try:
+                    dest.unlink()
+                except Exception:
+                    pass
+            shutil.move(str(p), str(dest))
+
+    if temp_root.exists():
+        shutil.rmtree(temp_root)
     return tuple(sorted(root.rglob('*.json')))
 
 

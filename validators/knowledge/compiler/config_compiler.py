@@ -34,6 +34,7 @@ EXCLUDED_DIRS = {
     "site-packages",
     "build",
     "dist",
+    ".pytest-tmp",
 }
 
 REQ_PKG_PATTERN = re.compile(r"^([a-zA-Z0-9_\-\.]+)\s*([<>=!~].*)?$")
@@ -61,23 +62,33 @@ def augment_parsed_files(
             parsed_by_path,
         )
 
-    # 2. requirements*.txt
-    for req_path in sorted(project_path.rglob("requirements*.txt")):
-        if any(part in EXCLUDED_DIRS for part in req_path.relative_to(project_path).parts):
-            continue
+    # 2. requirements*.txt, Dockerfiles, and compose files (using pruned os.walk)
+    import os
+    import fnmatch
+    requirements_files: list[Path] = []
+    docker_files: list[Path] = []
+    compose_files: list[Path] = []
+
+    for dirpath, dirnames, filenames in os.walk(project_path):
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
+        for filename in filenames:
+            path = Path(dirpath) / filename
+            if fnmatch.fnmatch(filename, "requirements*.txt"):
+                requirements_files.append(path)
+            elif fnmatch.fnmatch(filename, "Dockerfile*"):
+                docker_files.append(path)
+            elif fnmatch.fnmatch(filename, "docker-compose*.yml") or fnmatch.fnmatch(filename, "docker-compose*.yaml"):
+                compose_files.append(path)
+
+    for req_path in sorted(requirements_files):
         rel = req_path.relative_to(project_path).as_posix()
         _process_config_file(rel, req_path, _compile_requirements, parsed_files, parsed_by_path)
 
-    # 3. Dockerfiles and docker-compose*.yml/yaml
-    for docker_path in sorted(project_path.rglob("Dockerfile*")):
-        if any(part in EXCLUDED_DIRS for part in docker_path.relative_to(project_path).parts):
-            continue
+    for docker_path in sorted(docker_files):
         rel = docker_path.relative_to(project_path).as_posix()
         _process_config_file(rel, docker_path, _compile_dockerfile, parsed_files, parsed_by_path)
 
-    for compose_path in sorted(project_path.rglob("docker-compose*.yml")) + sorted(project_path.rglob("docker-compose*.yaml")):
-        if any(part in EXCLUDED_DIRS for part in compose_path.relative_to(project_path).parts):
-            continue
+    for compose_path in sorted(compose_files):
         rel = compose_path.relative_to(project_path).as_posix()
         _process_config_file(rel, compose_path, _compile_docker_compose, parsed_files, parsed_by_path)
 

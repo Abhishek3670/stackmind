@@ -45,23 +45,31 @@ def augment_parsed_files(
             if src in call_graph:
                 call_graph[src].add(tgt)
 
+    # Precompute short name to qualified names mapping to avoid O(N) scanning
+    short_name_to_qualnames: dict[str, list[str]] = {}
+    for sym_qual in all_symbols:
+        short_name = sym_qual.split(".")[-1]
+        short_name_to_qualnames.setdefault(short_name, []).append(sym_qual)
+
     # Traverse graph from roots to find reachable symbols
     visited: set[str] = set()
     queue = list(roots)
+    queued_set = set(roots)
     while queue:
         curr = queue.pop()
-        if curr in visited:
-            continue
         visited.add(curr)
 
         # Check call graph targets
         for neighbor in call_graph.get(curr, set()):
-            if neighbor not in visited and neighbor in all_symbols:
+            if neighbor in all_symbols and neighbor not in visited and neighbor not in queued_set:
                 queue.append(neighbor)
-            # Also check partial/short name matches
-            for sym_qual in all_symbols:
-                if sym_qual not in visited and (sym_qual.endswith(f".{neighbor}") or sym_qual == neighbor):
+                queued_set.add(neighbor)
+            # Also check partial/short name matches using precomputed map
+            short_name = neighbor.split(".")[-1]
+            for sym_qual in short_name_to_qualnames.get(short_name, []):
+                if sym_qual not in visited and sym_qual not in queued_set:
                     queue.append(sym_qual)
+                    queued_set.add(sym_qual)
 
     # Identify unreached symbols (excluding modules and roots)
     for qualname, sym in all_symbols.items():

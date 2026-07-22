@@ -84,10 +84,12 @@ def discover_python_files(root: Path) -> list[Path]:
     """Return project Python files in deterministic order."""
     excluded = {".git", ".sync", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "venv", ".venv", "env", ".env", "node_modules", ".tox", "site-packages", ".pytest-tmp"}
     files: list[Path] = []
-    for path in root.rglob("*.py"):
-        if any(part in excluded for part in path.relative_to(root).parts):
-            continue
-        files.append(path)
+    import os
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in excluded]
+        for filename in filenames:
+            if filename.endswith(".py"):
+                files.append(Path(dirpath) / filename)
     return sorted(files, key=lambda item: _rel_path(root, item))
 
 

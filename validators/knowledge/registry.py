@@ -102,6 +102,9 @@ class SymbolRegistry:
         self.sync_path = self.project_path / ".sync"
         self.registry_path = self.sync_path / "knowledge" / "registry"
         self.agent = agent
+        self._cached_records = None
+        self._cached_birth_key_index = None
+        self._cached_node_id_index = None
 
     def shard_for(self, node_id: str) -> str:
         """Return the 2-hex bucket for a NodeID."""
@@ -113,6 +116,8 @@ class SymbolRegistry:
 
     def load(self, node_id: str) -> dict[str, Any] | None:
         """Load a symbol record by NodeID, or None if it is absent."""
+        if self._cached_node_id_index is not None:
+            return self._cached_node_id_index.get(node_id)
         path = self.path_for(node_id)
         if not path.exists():
             return None
@@ -120,20 +125,33 @@ class SymbolRegistry:
 
     def load_all(self) -> list[dict[str, Any]]:
         """Load all registry records in deterministic path order."""
-        if not self.registry_path.exists():
-            return []
-        records: list[dict[str, Any]] = []
-        for path in sorted(self.registry_path.glob("*/*.json")):
-            records.append(json.loads(path.read_text(encoding="utf-8")))
-        return records
+        if self._cached_records is None:
+            if not self.registry_path.exists():
+                self._cached_records = []
+            else:
+                records: list[dict[str, Any]] = []
+                for path in sorted(self.registry_path.glob("*/*.json")):
+                    records.append(json.loads(path.read_text(encoding="utf-8")))
+                self._cached_records = records
+
+        if self._cached_node_id_index is None:
+            self._cached_node_id_index = {r["node_id"]: r for r in self._cached_records}
+
+        if self._cached_birth_key_index is None:
+            self._cached_birth_key_index = {}
+            for record in self._cached_records:
+                if record.get("status") == "active":
+                    keys = {record.get("birth_key"), *record.get("aliases", [])}
+                    for k in keys:
+                        if isinstance(k, str):
+                            self._cached_birth_key_index[k] = record
+        return self._cached_records
 
     def lookup_birth_key(self, key: str) -> dict[str, Any] | None:
         """Find the active record for a birth key or alias."""
-        for record in self.load_all():
-            keys = {record.get("birth_key"), *record.get("aliases", [])}
-            if key in keys and record.get("status") == "active":
-                return record
-        return None
+        if self._cached_birth_key_index is None:
+            self.load_all()
+        return self._cached_birth_key_index.get(key)
 
     def get_or_create(
         self,
@@ -188,6 +206,28 @@ class SymbolRegistry:
         path = self.path_for(node_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(_canonical_json(record), encoding="utf-8", newline="\n")
+        
+        # Update cache in-place
+        if self._cached_records is not None:
+            for i, r in enumerate(self._cached_records):
+                if r["node_id"] == node_id:
+                    self._cached_records[i] = record
+                    break
+            else:
+                self._cached_records.append(record)
+
+        if self._cached_node_id_index is not None:
+            self._cached_node_id_index[node_id] = record
+
+        if self._cached_birth_key_index is not None:
+            keys = {record.get("birth_key"), *record.get("aliases", [])}
+            for k in keys:
+                if isinstance(k, str):
+                    if record.get("status") == "active":
+                        self._cached_birth_key_index[k] = record
+                    else:
+                        self._cached_birth_key_index.pop(k, None)
+
         return RegistryWrite(node_id=node_id, path=path, record=record)
 
     def mark_obsolete(self, node_id: str, *, rev: int = 0) -> RegistryWrite:
