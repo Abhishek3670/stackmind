@@ -1,5 +1,7 @@
 .coverage
 scratch/
+memory/
+openclaw-workspace-state.json
 
 # Python bytecode — never commit
 __pycache__/
