@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-07-17T19:09:00+05:30"
+last_updated: "2026-07-19T16:30:00+05:30"
 updated_by: "claude"
 orders:
   - id: "WO-001"
@@ -82,15 +82,236 @@ orders:
   - id: "WO-008"
     type: FEATURE
     title: "Harness Runtime — Governed Agent Execution Loop (Phase 8)"
-    status: ACTIVE
+    status: COMPLETED
     priority: P2
     assigned_agents: ["codex"]
     dependencies: ["WO-007"]
     deliverable:
       type: "module"
-      path: "TBD"
+      path: "validators/harness/"
       description: "Governed agent execution loop with Knowledge API integration, verification gates, and observability"
-next_id: 9
-total_active: 1
-total_completed: 7
+  - id: "WO-009"
+    type: FEATURE
+    title: "Validation Hardening — Duplicate WO Detection + Per-File WO Schema Enforcement (E1+E2)"
+    status: COMPLETED
+    priority: P0
+    assigned_agents: ["codex"]
+    dependencies: []
+    deliverable:
+      type: "module"
+      path: "cli/validate.py"
+      description: "Duplicate WO detection across state dirs + per-file WO schema enforcement + extended WO schema"
+  - id: "WO-010"
+    type: FEATURE
+    title: "Shutdown Receipt Writing — Session Receipts on Clean Shutdown (E3)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: []
+    deliverable:
+      type: "module"
+      path: "cli/shutdown.py"
+      description: "Session receipt writing on all shutdown paths (clean, deferred, error)"
+  - id: "WO-011"
+    type: FEATURE
+    title: "Pydantic Compiler — Model & Validation Graph (PLANv3 §1.7)"
+    status: COMPLETED
+    priority: P0
+    assigned_agents: ["codex"]
+    dependencies: ["WO-002"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/pydantic_compiler.py"
+      description: "Pydantic model compiler: BaseModel detection, field extraction, validator mapping, inheritance graph"
+  - id: "WO-012"
+    type: FEATURE
+    title: "FastAPI Compiler — Routes, Dependencies, Middleware (PLANv3 §1.2)"
+    status: COMPLETED
+    priority: P0
+    assigned_agents: ["codex"]
+    dependencies: ["WO-011"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/fastapi_compiler.py"
+      description: "FastAPI compiler: route detection, dependency injection resolution, middleware mapping, auth graph"
+  - id: "WO-013"
+    type: FEATURE
+    title: "SQLAlchemy Compiler — ORM Models, Relationships, Foreign Keys (PLANv3 §1.4)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-002"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/sqlalchemy_compiler.py"
+      description: "SQLAlchemy compiler: ORM model detection, column extraction, FK/relationship mapping, schema graph"
+  - id: "WO-014"
+    type: FEATURE
+    title: "Django Compiler — URLs, Views, Models, Signals, Middleware (PLANv3 §1.3)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-002"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/django_compiler.py"
+      description: "Django compiler: URL routing, views, models, signals, and middleware mapping"
+  - id: "WO-015"
+    type: FEATURE
+    title: "Celery Compiler — Tasks, Queues, Scheduling (PLANv3 §1.6)"
+    status: COMPLETED
+    priority: P2
+    assigned_agents: ["codex"]
+    dependencies: ["WO-002"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/celery_compiler.py"
+      description: "Celery compiler: task definitions, beat scheduling, and asynchronous call flow tracing"
+  - id: "WO-016"
+    type: FEATURE
+    title: "Alembic Compiler — Migration History & Schema Evolution (PLANv3 §1.5)"
+    status: COMPLETED
+    priority: P2
+    assigned_agents: ["codex"]
+    dependencies: ["WO-013"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/alembic_compiler.py"
+      description: "Alembic compiler: migration DAG parsing and schema timeline reconstruction"
+  - id: "WO-017"
+    type: FEATURE
+    title: "Contract Schema & Definition Engine — Identity, Scope, Budget (PLANv3 §1.1)"
+    status: COMPLETED
+    priority: P0
+    assigned_agents: ["codex"]
+    dependencies: ["WO-002"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/contract.py"
+      description: "Contract schema (schemas/contract.schema.json) and Contract definition engine parsing scope allow/deny rules and budgets"
+  - id: "WO-018"
+    type: FEATURE
+    title: "Knowledge API Enforceable Scope Gate — Structural Fail-Closed Access Control (PLANv3 §1.2)"
+    status: COMPLETED
+    priority: P0
+    assigned_agents: ["codex"]
+    dependencies: ["WO-017"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/api.py"
+      description: "Knowledge API --contract enforcement parameter: rejects out-of-scope or denied node requests at access time"
+  - id: "WO-019"
+    type: FEATURE
+    title: "Contract CLI & Denial Explainer — Contract Inspection & Validation Commands (PLANv3 §1.5)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-018"]
+    deliverable:
+      type: "module"
+      path: "cli/contract.py"
+      description: "CLI commands: graph contract show, graph contract validate, graph explain-denial, graph scope"
+  - id: "WO-020"
+    type: FEATURE
+    title: "Harness Integration & Pre/Post Execution Gate — Governed Execution Contract Gate (PLANv3 §1.4)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-018"]
+    deliverable:
+      type: "module"
+      path: "validators/harness/contract_gate.py"
+      description: "Pre-execution plan verification and post-execution diff verification against agent contract"
+  - id: "WO-021"
+    type: FEATURE
+    title: "Documentation Compiler — README, RFC, ADR Compilation (PLANv3 §2)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/doc_compiler.py"
+      description: "Documentation compiler parsing and loading markdown files into the engineering graph"
+  - id: "WO-022"
+    type: FEATURE
+    title: "Configuration Compiler — pyproject, requirements, Docker, .env (PLANv3 §2)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/config_compiler.py"
+      description: "Configuration compiler parsing project environment configuration files into graph representation"
+  - id: "WO-023"
+    type: FEATURE
+    title: "CI/CD Compiler — GitHub Actions, GitLab CI (PLANv3 §2)"
+    status: COMPLETED
+    priority: P2
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/cicd_compiler.py"
+      description: "CI/CD compiler parsing pipeline orchestration files to identify run commands and dependencies"
+  - id: "WO-024"
+    type: FEATURE
+    title: "Test Compiler — pytest, unittest, coverage Mapping (PLANv3 §2)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/test_compiler.py"
+      description: "Test compiler mapping test suites and test execution targets into the knowledge graph"
+  - id: "WO-025"
+    type: FEATURE
+    title: "Circular Import & Cycle Detection Compiler — Cycle DAG Parser (PLANv3 §3)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/cycle_compiler.py"
+      description: "Cycle compiler identifying and representing circular module imports in the knowledge graph"
+  - id: "WO-026"
+    type: FEATURE
+    title: "Dead Code & Unused Module Inspector — Call Graph Reachability Engine (PLANv3 §3)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/dead_code_compiler.py"
+      description: "Dead code analyzer computing unreachable nodes and orphaned symbols in the call graph"
+  - id: "WO-027"
+    type: FEATURE
+    title: "Structural Complexity & Health Analyzer — Cognitive Metrics (PLANv3 §3)"
+    status: COMPLETED
+    priority: P2
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/health_compiler.py"
+      description: "Structural health analyzer measuring file couplings, cognitive complexity, and quality parameters"
+  - id: "WO-028"
+    type: FEATURE
+    title: "Refactoring Impact Mapper & Change-Set Predictor — Downstream Tracing (PLANv3 §3)"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-004"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/impact_compiler.py"
+      description: "Impact mapping engine tracing call stack and library changes down to their dependents"
+next_id: 29
+total_active: 0
+total_completed: 28
 total_blocked: 0
+

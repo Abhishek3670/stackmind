@@ -71,8 +71,10 @@ QA lead and code reviewer. You own quality gates, code review, test coverage val
 1. Receive review request in inbox
 2. Read modified files
 3. Run tests locally if needed
-4. Write verdict (APPROVED / NEEDS_CHANGES / BLOCKED)
-5. Send verdict to requesting agent
+4. **Dependency manifest check** — Verify a dependency manifest exists (requirements.txt, pyproject.toml with `[project.dependencies]`, or equivalent). A release CANNOT be approved without one. (D-004, Q1)
+5. **Secret scan** — Grep for hardcoded secrets (patterns: `SECRET`, `PASSWORD`, `API_KEY`, `TOKEN` assigned to string literals; hardcoded credentials). Any hit → BLOCKED until moved to environment/config. (D-004, Q2)
+6. Write verdict (APPROVED / NEEDS_CHANGES / BLOCKED)
+7. Send verdict to requesting agent
 
 ---
 
@@ -85,3 +87,5 @@ QA lead and code reviewer. You own quality gates, code review, test coverage val
 | Linting | Clean |
 | Security scan | No high/critical |
 | Tests | All passing |
+| Dependency manifest | Must exist (requirements.txt / pyproject.toml) |
+| Secret scan | No hardcoded secrets (grep check) |

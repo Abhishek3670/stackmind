@@ -1,84 +1,74 @@
-schema_version: 1
-tree_version: 10
-graph_version: null
-last_updated: "2026-07-17T21:57:00+05:30"
-
-current_phase: "PHASE_8"
-phase_status: "ACTIVE"
-release: "2.0.0"
-
-work_orders:
-  total_active: 1
-  total_blocked: 0
-  total_completed: 7
-  index_file: "work-orders/INDEX.yaml"
-
+active_dependencies: []
 agents:
   claude:
-    status: "active"
+    assigned_work_orders: []
+    blockers: []
+    boot_version: v1.0
+    last_task: Session ended via shutdown
+    next_task: "None \u2014 awaiting next assignment"
     session_count: 2
-    last_task: "Phase 8 gate satisfied; WO-008 unblocked and assigned to Codex"
-    next_task: "Await Codex WO-008 delivery (Phase 8 Harness Runtime)"
-    blockers: []
-    boot_version: "v1.0"
-    assigned_work_orders: []
-
+    status: idle
   codex:
-    status: "assigned"
-    session_count: 7
-    last_task: "WO-007 COMPLETED — Knowledge API + Agent Integration (Phase 7)"
-    next_task: "WO-008: Harness Runtime — Governed Agent Execution Loop (Phase 8)"
+    assigned_work_orders: []
     blockers: []
-    boot_version: "v1.0"
-    assigned_work_orders: ["WO-008"]
-
+    boot_version: v1.0
+    last_task: Session ended via shutdown
+    next_task: "None \u2014 awaiting next assignment"
+    session_count: 8
+    status: idle
   gemini:
-    status: "idle"
+    assigned_work_orders: []
+    blockers: []
+    boot_version: v1.0
+    last_task: Runtime initialized
+    next_task: Await first assignment
     session_count: 0
-    last_task: "Runtime initialized"
-    next_task: "Await first assignment"
-    blockers: []
-    boot_version: "v1.0"
-    assigned_work_orders: []
-
+    status: idle
   gemma:
-    status: "idle"
+    assigned_work_orders: []
+    blockers: []
+    boot_version: v1.0
+    last_task: Session ended via shutdown
+    next_task: Await next review assignment
     session_count: 6
-    last_task: "WO-006 re-review — APPROVED"
-    next_task: "Await next review assignment"
-    blockers: []
-    boot_version: "v1.0"
-    assigned_work_orders: []
-
+    status: idle
   local-llm:
-    status: "idle"
-    session_count: 1
-    last_task: "Initial .sync commit (432c1f7)"
-    next_task: "Await next commit directive"
-    blockers: []
-    boot_version: "v1.0"
     assigned_work_orders: []
-
+    blockers: []
+    boot_version: v1.0
+    last_task: Initial .sync commit (432c1f7)
+    next_task: Await next commit directive
+    session_count: 1
+    status: idle
+compliance:
+  codex: COMPLIANT
+  gemini: COMPLIANT
+  gemma: COMPLIANT
+  local-llm: COMPLIANT
+current_phase: COMPLETE
+decisions_pending: []
+graph_version: null
 inbox_unread:
   claude: 0
   codex: 2
   gemini: 0
   gemma: 0
   local-llm: 1
-
-latest_decision: "D-003"
-latest_decision_title: "RFC-006 Accepted — Phase 8 Gate: Knowledge API Adoption Session Required"
-decisions_pending: []
-active_dependencies: []
-
+last_updated: '2026-07-22T20:07:48.990136+00:00'
+latest_decision: D-004
+latest_decision_title: "Gemma Contract Hardening \u2014 Dependency Manifest Gate +\
+  \ Secret-Scan Gate (Q1+Q2)"
+phase_status: SHIPPED
 quality:
-  backend_coverage: "83%"
-  frontend_coverage: "not-run"
-  tests_passing: "257"
-  build_status: "GREEN"
-
-compliance:
-  codex: "COMPLIANT"
-  gemini: "COMPLIANT"
-  gemma: "COMPLIANT"
-  local-llm: "COMPLIANT"
+  backend_coverage: 83%
+  build_status: GREEN
+  frontend_coverage: not-run
+  tests_passing: '257'
+release: 2.0.0
+schema_version: 1
+tree_version: 13
+work_orders:
+  index_file: work-orders/INDEX.yaml
+  total_active: 0
+  total_blocked: 0
+  total_completed: 28
