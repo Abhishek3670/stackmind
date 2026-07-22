@@ -238,7 +238,7 @@ class TestInit:
 
         assert rv_path.exists()
         rv = yaml.safe_load(rv_path.read_text(encoding="utf-8"))
-        assert rv["version"] == "2.0.0"
+        assert rv["version"] == "3.0.0"
 
     def test_creates_system_context(self, tmp_project):
         """SYSTEM_CONTEXT.md must have project-specific values."""
