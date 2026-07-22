@@ -1,14 +1,14 @@
 # StackMind Multi-Agent Pipeline Demo: Empty Project Guide
 
-This guide demonstrates how to initialize StackMind on a **completely empty project** and watch the multi-agent pipeline automatically develop, test, review, and commit a new feature from scratch.
+This guide demonstrates how to initialize StackMind on a **completely empty project** and run the multi-agent pipeline to develop, test, review, and commit a new feature from scratch.
 
-In this workflow, **the user only writes a feature request** to Claude's inbox. The entire remaining pipeline—work order creation, contract definition, code implementation, testing, QA review, and git commits—is handled automatically by the agent swarm via the `stackmind harness`.
+In this workflow, **the user only writes a feature request** to Claude's inbox. Each agent is then launched as an LLM session (Claude Code, OpenAI Codex, Gemini, etc.) that reads `AGENTS.md`, checks its inbox, and follows the governance protocol autonomously.
 
 ---
 
 ## 🛠️ Step 1: Create and Initialize the Project
 
-Start by creating a brand-new directory, initializing the Git repository, and setting up the StackMind runtime:
+Start by creating a brand-new directory and setting up the StackMind runtime:
 
 ```powershell
 # 1. Create a new directory and initialize Git
@@ -32,7 +32,14 @@ stackmind graph build -p .
 
 ## 📝 Step 2: The User Writes the Task (Your Only Manual Step)
 
-Create a feature request file in Claude's inbox at `.sync/inbox/claude/2026-07-23_CEO_init_calculator.md`:
+Create a feature request file in Claude's inbox:
+
+```powershell
+# Create the task file
+New-Item -ItemType File -Path .sync/inbox/claude/2026-07-23_CEO_init_calculator.md -Force
+```
+
+Write the following content into that file:
 
 ```markdown
 # Work Order Request
@@ -54,71 +61,113 @@ Write unit tests covering both functions in `tests/test_calculator.py`.
 
 ---
 
-## 🚀 Step 3: Trigger the Pipeline
+## 🚀 Step 3: Run the Agent Pipeline
 
-Run the agents sequentially using the `stackmind harness`. The harness automatically handles the lock system, validates outputs, runs test suites, and updates the states.
+Each agent is a separate LLM coding session (Claude Code, Codex CLI, Gemini CLI, etc.) pointed at your project directory. Every agent reads `AGENTS.md` on startup, which tells it how to check its inbox, follow governance rules, and hand off work to the next agent.
 
-### 1. Boot Claude (Architect)
-Claude reads your request, plans the solution, and **automatically generates the Work Order AND the Agent Contract** for the developer:
-```powershell
-stackmind harness run-once claude -p .
+> **How it works:** You open a new LLM session, tell it "You are agent `<name>`, read AGENTS.md and process your inbox", and the agent does the rest.
+
+### 1. Launch Claude (Architect)
+
+Open a **Claude Code** session in the project directory and prompt:
+
 ```
-* **What happened automatically:**
-  - `.sync/work-orders/ACTIVE/WO-001.yaml` is created.
-  - `.sync/contracts/WO-001.yaml` (specifying allowed files, budgets, and constraints) is generated.
-  - An assignment message is placed in Codex's inbox.
+You are agent "claude" on the stackmind project at this directory.
+Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
+and process your unread inbox at .sync/inbox/claude/.
+```
+
+Claude reads your feature request and autonomously:
+- Creates `.sync/work-orders/ACTIVE/WO-001.yaml` with the task breakdown.
+- Creates `.sync/contracts/WO-001.yaml` specifying which files the developer is allowed to touch.
+- Writes an assignment message to `.sync/inbox/codex/`.
+- Runs `stackmind shutdown claude` to persist its session.
 
 ---
 
-### 2. Boot Codex (Developer)
-Codex reads the assignment, queries the empty graph, implements `calculator.py` and `tests/test_calculator.py`, and updates the knowledge graph:
-```powershell
-stackmind harness run-once codex -p .
+### 2. Launch Codex (Developer)
+
+Open a **Codex CLI** (or any LLM coding agent) session and prompt:
+
 ```
-* **What happened automatically:**
-  - `calculator.py` and `tests/test_calculator.py` are written.
-  - The **Harness Contract Gate** verifies that Codex's code changes are within the contract's allowed boundaries and token budgets.
-  - A review request is sent to Gemma's inbox.
+You are agent "codex" on the stackmind project at this directory.
+Read AGENTS.md, boot from .sync/runtime/boot/codex.boot.yaml,
+and process your unread inbox at .sync/inbox/codex/.
+```
+
+Codex reads its assignment, queries the knowledge graph for context, and autonomously:
+- Implements `calculator.py` with `add()` and `subtract()`.
+- Writes `tests/test_calculator.py` with unit tests.
+- Runs `stackmind graph update -p .` to update the knowledge graph.
+- Sends a review request to `.sync/inbox/gemma/`.
+- Sends a completion notice to `.sync/inbox/claude/`.
+- Runs `stackmind shutdown codex` to persist its session.
 
 ---
 
-### 3. Boot Gemma (QA Reviewer)
-Gemma reviews Codex's code, runs the test suite, and ensures all security checks pass:
-```powershell
-stackmind harness run-once gemma -p .
+### 3. Launch Gemma (QA Reviewer)
+
+Open a **Gemini CLI** (or any LLM agent) session and prompt:
+
 ```
-* **What happened automatically:**
-  - Gemma runs `pytest` and `stackmind validate .`.
-  - Places the `APPROVED` QA verdict notice in Claude's inbox.
+You are agent "gemma" on the stackmind project at this directory.
+Read AGENTS.md, boot from .sync/runtime/boot/gemma.boot.yaml,
+and process your unread inbox at .sync/inbox/gemma/.
+```
+
+Gemma reviews Codex's code and autonomously:
+- Runs `pytest` and `stackmind validate .`.
+- Writes an `APPROVED` verdict to `.sync/inbox/claude/`.
+- Writes a verdict notice to `.sync/inbox/codex/`.
+- Runs `stackmind shutdown gemma` to persist its session.
 
 ---
 
-### 4. Boot Claude (Route Approval)
-Claude receives Gemma's approval and instructs the GitOps agent to commit the code:
-```powershell
-stackmind harness run-once claude -p .
+### 4. Launch Claude (Route Approval → GitOps → Close)
+
+Re-open a **Claude Code** session and prompt:
+
+```
+You are agent "claude" on the stackmind project at this directory.
+Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
+and process your unread inbox at .sync/inbox/claude/.
 ```
 
----
-
-### 5. Boot Local-LLM (GitOps Commit)
-Local-LLM stages and commits the code and the `.sync` state history to Git:
-```powershell
-stackmind harness run-once local-llm -p .
-```
-
----
-
-### 6. Boot Claude (Close Work Order)
-Claude closes the loop, marks the work order completed, and writes a status report back to the CEO's inbox:
-```powershell
-stackmind harness run-once claude -p .
-```
+Claude receives Gemma's approval and autonomously:
+- Instructs Local-LLM (or handles directly) to commit the code to Git.
+- Marks WO-001 as `COMPLETED`.
+- Writes a status report to `.sync/inbox/CEO/` with the commit hash and test summary.
+- Runs `stackmind shutdown claude` to persist its session.
 
 ---
 
 ## 🏁 Step 4: Verify Deliverables
 
-1. **Check the code**: Open `calculator.py` and `tests/test_calculator.py` to see the generated implementation.
-2. **Check Git history**: Run `git log --oneline` to see the commit generated by the GitOps agent.
-3. **Read your completion report**: Check your inbox at `.sync/inbox/CEO/` to read the completion report from Claude containing the commit hash and test run summaries.
+```powershell
+# 1. Check the generated code
+cat calculator.py
+cat tests/test_calculator.py
+
+# 2. Run the tests yourself
+pytest tests/test_calculator.py
+
+# 3. Check the git log
+git log --oneline
+
+# 4. Read your completion report
+cat .sync/inbox/CEO/*.md
+```
+
+---
+
+## 📌 Key Concepts
+
+| Concept | Description |
+|---------|-------------|
+| **AGENTS.md** | The governance contract every agent reads on startup. Defines authority, rules, and protocols. |
+| **Inbox System** | Agents communicate via files in `.sync/inbox/<agent>/`. Messages are moved to `_read/` after processing. |
+| **Boot Snapshots** | Each agent's state is tracked in `.sync/runtime/boot/<agent>.boot.yaml`. |
+| **Knowledge Graph** | `stackmind graph build` / `graph update` compiles source code into a queryable symbol index. |
+| **Work Orders** | Formal task assignments created by the architect, stored in `.sync/work-orders/ACTIVE/`. |
+| **Contracts** | Scope boundaries defining which files/modules a worker agent is allowed to modify. |
+| **Shutdown Protocol** | Every agent must run `stackmind shutdown <agent>` before ending its session. |
