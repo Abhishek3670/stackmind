@@ -1,26 +1,38 @@
-# StackMind Multi-Agent Pipeline Demo Guide
+# StackMind Multi-Agent Pipeline Demo: Empty Project Guide
 
-This guide demonstrates how the StackMind agent pipeline processes a task end-to-end. 
+This guide demonstrates how to initialize StackMind on a **completely empty project** and watch the multi-agent pipeline automatically develop, test, review, and commit a new feature from scratch.
 
 In this workflow, **the user only writes a feature request** to Claude's inbox. The entire remaining pipeline—work order creation, contract definition, code implementation, testing, QA review, and git commits—is handled automatically by the agent swarm via the `stackmind harness`.
 
 ---
 
-## 🛠️ Step 1: Initialize the Project
+## 🛠️ Step 1: Create and Initialize the Project
 
-Start by initializing StackMind on the target repository and building the code graph:
+Start by creating a brand-new directory, initializing the Git repository, and setting up the StackMind runtime:
 
 ```powershell
+# 1. Create a new directory and initialize Git
+mkdir stackmind-demo
+cd stackmind-demo
+git init
+
+# 2. Initialize StackMind
 stackmind init .
+
+# 3. Build the initial empty code graph
 stackmind graph build -p .
-stackmind validate .
 ```
+
+* **What happened automatically:**
+  - `.sync/` directory containing agent configuration, boot snapshots, and workspaces is created.
+  - `AGENTS.md` is generated in the root, defining the team hierarchy and governance rules.
+  - The initial knowledge graph index is built.
 
 ---
 
 ## 📝 Step 2: The User Writes the Task (Your Only Manual Step)
 
-Create a feature request file in Claude's inbox at `.sync/inbox/claude/2026-07-22_CEO_task.md`:
+Create a feature request file in Claude's inbox at `.sync/inbox/claude/2026-07-23_CEO_init_calculator.md`:
 
 ```markdown
 # Work Order Request
@@ -28,43 +40,44 @@ Create a feature request file in Claude's inbox at `.sync/inbox/claude/2026-07-2
 from: CEO
 to: claude
 priority: P1
-date: "2026-07-22"
+date: "2026-07-23"
 
 ## Task
-Add validation to the file upload module to reject any file that is not a PDF or exceeds 10MB.
+Create a simple calculator module in `calculator.py` with `add(a, b)` and `subtract(a, b)` functions.
+Write unit tests covering both functions in `tests/test_calculator.py`.
 
 ## Acceptance Criteria
-- Files must be PDF only (return 400 Bad Request if not).
-- Max file size is 10MB (return 413 Payload Too Large if exceeded).
-- Write unit tests covering both validation gates.
+- `add(a, b)` returns the sum of a and b.
+- `subtract(a, b)` returns the difference of a and b.
+- Write unit tests verifying both functions.
 ```
 
 ---
 
 ## 🚀 Step 3: Trigger the Pipeline
 
-Run the agents sequentially using the `stackmind harness`. The harness automatically handles the lock system, validates outputs, and updates the states.
+Run the agents sequentially using the `stackmind harness`. The harness automatically handles the lock system, validates outputs, runs test suites, and updates the states.
 
 ### 1. Boot Claude (Architect)
 Claude reads your request, plans the solution, and **automatically generates the Work Order AND the Agent Contract** for the developer:
 ```powershell
 stackmind harness run-once claude -p .
 ```
-* **What happened automatically:** 
-  - `.sync/work-orders/ACTIVE/WO-021.yaml` is created.
-  - `.sync/contracts/WO-021.yaml` (specifying allowed/denied modules and budgets) is generated.
+* **What happened automatically:**
+  - `.sync/work-orders/ACTIVE/WO-001.yaml` is created.
+  - `.sync/contracts/WO-001.yaml` (specifying allowed files, budgets, and constraints) is generated.
   - An assignment message is placed in Codex's inbox.
 
 ---
 
 ### 2. Boot Codex (Developer)
-Codex reads the assignment, queries the graph for context, writes the validation logic and tests, and updates the knowledge graph:
+Codex reads the assignment, queries the empty graph, implements `calculator.py` and `tests/test_calculator.py`, and updates the knowledge graph:
 ```powershell
 stackmind harness run-once codex -p .
 ```
 * **What happened automatically:**
-  - Codex implements the validation logic and test cases.
-  - The **Harness Contract Gate** verifies that Codex's code changes are within the contract's allowed boundaries and budgets.
+  - `calculator.py` and `tests/test_calculator.py` are written.
+  - The **Harness Contract Gate** verifies that Codex's code changes are within the contract's allowed boundaries and token budgets.
   - A review request is sent to Gemma's inbox.
 
 ---
@@ -76,7 +89,7 @@ stackmind harness run-once gemma -p .
 ```
 * **What happened automatically:**
   - Gemma runs `pytest` and `stackmind validate .`.
-  - Places the `APPROVED` verdict notice in Claude's inbox.
+  - Places the `APPROVED` QA verdict notice in Claude's inbox.
 
 ---
 
@@ -97,13 +110,15 @@ stackmind harness run-once local-llm -p .
 ---
 
 ### 6. Boot Claude (Close Work Order)
-Claude closes the loop, marks the work order completed, and writes a status report back to your inbox:
+Claude closes the loop, marks the work order completed, and writes a status report back to the CEO's inbox:
 ```powershell
 stackmind harness run-once claude -p .
 ```
 
 ---
 
-## 🏁 Step 4: Read Your Results
+## 🏁 Step 4: Verify Deliverables
 
-Check your inbox at `.sync/inbox/CEO/` to read the completion report from Claude containing the commit hash and test run summaries.
+1. **Check the code**: Open `calculator.py` and `tests/test_calculator.py` to see the generated implementation.
+2. **Check Git history**: Run `git log --oneline` to see the commit generated by the GitOps agent.
+3. **Read your completion report**: Check your inbox at `.sync/inbox/CEO/` to read the completion report from Claude containing the commit hash and test run summaries.
