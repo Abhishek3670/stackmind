@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from cli import __version__
 from cli.main import cli
 
 
@@ -35,7 +36,7 @@ class TestVersion:
         result = runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
         assert "stackmind" in result.output
-        assert "1.2.0" in result.output
+        assert __version__ in result.output
 
 
 # ─── Init Command ────────────────────────────────────────────

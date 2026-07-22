@@ -31,7 +31,7 @@ DEFAULT_AGENTS = ["claude", "codex", "gemini", "gemma", "local-llm"]
 PLACEHOLDER_PATTERN = re.compile(r"\{\{(\w+)\}\}")
 
 # Runtime version for fresh installs
-RUNTIME_VERSION = "1.0.0"
+RUNTIME_VERSION = "2.0.0"
 
 
 def get_templates_dir() -> Path:

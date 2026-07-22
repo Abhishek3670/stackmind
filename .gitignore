@@ -1,8 +1,10 @@
 .coverage
 scratch/
-cli/_pycache__/
-cli/__pycache__/*
-tests/__pycache__/
+
+# Python bytecode — never commit
+__pycache__/
+*.pyc
+*.pyo
 
 # SKC planning / research docs — not for commit
 docs/SKC-STATUS.md
@@ -18,3 +20,12 @@ docs/SMPOC/
 .pytest-tmp/
 
 .sync/knowledge/cache/embeddings/
+demo.md
+report.md
+docs/STACKMIND-V2-REPORT.md
+
+USER.md
+TOOLS.md
+SOUL.md
+HEARTBEAT.md
+IDENTITY.md

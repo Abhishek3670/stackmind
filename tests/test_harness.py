@@ -84,6 +84,24 @@ def test_runner_completes_assigned_work_order_and_keeps_tree_byte_identical(tmp_
     }
     _write_yaml(project / '.sync' / 'work-orders' / 'ACTIVE' / 'WO-101.yaml', work_order)
 
+    index_path = project / '.sync' / 'work-orders' / 'INDEX.yaml'
+    index_data = yaml.safe_load(index_path.read_text(encoding='utf-8'))
+    index_data['orders'].append({
+        'id': 'WO-101',
+        'type': 'FEATURE',
+        'title': 'Harness smoke task',
+        'status': 'ACTIVE',
+        'priority': 'P2',
+        'assigned_agents': ['codex'],
+        'dependencies': [],
+        'deliverable': {
+            'type': 'module',
+            'path': 'validators/harness/runner.py',
+            'description': 'Harness runtime',
+        },
+    })
+    _write_yaml(index_path, index_data)
+
     provider = StaticLLMProvider(
         {
             'status': 'completed',
@@ -174,6 +192,18 @@ def test_invalid_output_never_persists(tmp_path):
             'description': 'This should fail before writing.',
         },
     )
+    index_path = project / '.sync' / 'work-orders' / 'INDEX.yaml'
+    index_data = yaml.safe_load(index_path.read_text(encoding='utf-8'))
+    index_data['orders'].append({
+        'id': 'WO-101',
+        'type': 'FEATURE',
+        'title': 'Harness invalid output',
+        'status': 'ACTIVE',
+        'priority': 'P2',
+        'assigned_agents': ['codex'],
+        'dependencies': [],
+    })
+    _write_yaml(index_path, index_data)
 
     runner = AgentRunner(project, 'codex', llm_provider=provider, now_fn=_fixed_now)
     result = runner.run_once()

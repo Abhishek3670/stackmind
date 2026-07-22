@@ -164,7 +164,7 @@ def promote(project_path: Path, agent: str) -> bool:
 
     ok, message = promote_draft(sync_path, agent)
     if ok:
-        console.print(f"[green][\u2713] {message}[/green]")
+        console.print(f"[green][+] {message}[/green]")
     else:
         console.print(f"[bold red][x] {message}[/bold red]")
     return ok

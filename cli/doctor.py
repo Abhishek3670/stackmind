@@ -34,6 +34,10 @@ def _check_compatibility(runtime_version: str, cli_version: str) -> str:
     except (ValueError, IndexError):
         return "UNKNOWN"
 
+    # CLI 2.x is fully compatible with Runtime 1.2+ (Governance schema didn't change)
+    if cv[0] == 2 and rv[0] == 1 and rv[1] >= 2:
+        return "FULL"
+
     if rv[0] == cv[0]:
         if rv[1] <= cv[1]:
             return "FULL"

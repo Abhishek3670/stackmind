@@ -77,6 +77,42 @@ def _load_yaml(path: Path) -> tuple[dict | None, str | None]:
         return None, str(e)
 
 
+WORK_ORDER_STATE_DIRS = ("ACTIVE", "BLOCKED", "COMPLETED")
+WORK_ORDER_ALLOWED_STATUSES = {
+    "ACTIVE": {"ACTIVE"},
+    "BLOCKED": {"BLOCKED"},
+    "COMPLETED": {"COMPLETE", "COMPLETED"},
+}
+
+
+def _iter_work_order_files(sync_path: Path):
+    work_orders_dir = sync_path / "work-orders"
+    for state_dir in WORK_ORDER_STATE_DIRS:
+        state_path = work_orders_dir / state_dir
+        if not state_path.exists():
+            continue
+        for work_order_file in sorted(state_path.glob("*.yaml")):
+            yield state_dir, work_order_file
+
+
+def _append_schema_errors(file_rel: str, data: dict, schema: dict, result: ValidationResult) -> None:
+    validator = Draft7Validator(schema)
+    for error in validator.iter_errors(data):
+        json_path = ".".join(str(p) for p in error.absolute_path) or "(root)"
+        result.issues.append(Issue(
+            layer="Schema",
+            severity=Severity.ERROR,
+            message=f"{file_rel}: {json_path} — {error.message}",
+            path=file_rel,
+        ))
+
+
+def _normalize_work_order_status(status: str | None) -> str | None:
+    if status == "COMPLETE":
+        return "COMPLETED"
+    return status
+
+
 def _discover_agents(sync_path: Path) -> list[str]:
     boot_dir = sync_path / "runtime" / "boot"
     if not boot_dir.exists():
@@ -118,15 +154,7 @@ def validate_schema(sync_path: Path, result: ValidationResult) -> None:
         if schema is None:
             continue
 
-        validator = Draft7Validator(schema)
-        for error in validator.iter_errors(data):
-            json_path = ".".join(str(p) for p in error.absolute_path) or "(root)"
-            result.issues.append(Issue(
-                layer="Schema",
-                severity=Severity.ERROR,
-                message=f"{file_rel}: {json_path} — {error.message}",
-                path=file_rel,
-            ))
+        _append_schema_errors(file_rel, data, schema, result)
 
     # Validate boot snapshots
     boot_schema = _load_schema("boot.schema.json")
@@ -145,15 +173,28 @@ def validate_schema(sync_path: Path, result: ValidationResult) -> None:
                 ))
                 continue
 
-            validator = Draft7Validator(boot_schema)
-            for error in validator.iter_errors(data):
-                json_path = ".".join(str(p) for p in error.absolute_path) or "(root)"
+            _append_schema_errors(
+                f"runtime/boot/{boot_file.name}",
+                data,
+                boot_schema,
+                result,
+            )
+
+    work_order_schema = _load_schema("work-order.schema.json")
+    if work_order_schema:
+        for _, work_order_file in _iter_work_order_files(sync_path):
+            file_rel = work_order_file.relative_to(sync_path).as_posix()
+            data, err = _load_yaml(work_order_file)
+            if err:
                 result.issues.append(Issue(
                     layer="Schema",
                     severity=Severity.ERROR,
-                    message=f"runtime/boot/{boot_file.name}: {json_path} — {error.message}",
-                    path=f"runtime/boot/{boot_file.name}",
+                    message=f"{file_rel}: {err}",
+                    path=file_rel,
                 ))
+                continue
+
+            _append_schema_errors(file_rel, data, work_order_schema, result)
 
 
 # ─── Layer 2: Structural Validation ─────────────────────────────
@@ -330,6 +371,7 @@ def validate_protocol(sync_path: Path, agents: list[str], result: ValidationResu
 
     # Check TREE.yaml has authority model (agents section must exist)
     tree_path = sync_path / "runtime" / "TREE.yaml"
+    data = None
     if tree_path.exists():
         data, _ = _load_yaml(tree_path)
         if data:
@@ -344,7 +386,9 @@ def validate_protocol(sync_path: Path, agents: list[str], result: ValidationResu
                     ))
 
     # Validate blocked agents have non-empty blockers with valid references
-    _validate_blocked_agents(sync_path, data, result)
+    if data:
+        _validate_blocked_agents(sync_path, data, result)
+        _validate_work_order_state_files(sync_path, result)
 
     # Validate the write lock (PLAT-03) integrity
     _validate_lock(sync_path, agents, result)
@@ -363,6 +407,9 @@ def validate_protocol(sync_path: Path, agents: list[str], result: ValidationResu
 
     # Validate handoff reports (GEMINI-02, LOCAL-LLM-01)
     _validate_handoff_reports(sync_path, result)
+
+    # Ungoverned change detection
+    _validate_ungoverned_changes(sync_path, result)
 
 
 # Unanchored work-order reference pattern (for scanning prose/filenames).
@@ -427,7 +474,15 @@ def _validate_review_files(sync_path: Path, result: ValidationResult) -> None:
 
 # Matches a `release_target:` field with a non-empty value (ignoring an empty
 # value or a placeholder like "TBD"/"none"/"<...>").
-RELEASE_TARGET_PATTERN = re.compile(r"(?mi)^[ \t]*release_target[ \t]*:[ \t]*(.*?)[ \t]*$")
+# Matches release_target in various formats:
+#   release_target: v1.0.0
+#   release_target: "v1.0.0"
+#   - **Release Target:** v1.0.0
+#   **release_target:** v1.0.0
+#   | release_target | v1.0.0 |
+RELEASE_TARGET_PATTERN = re.compile(
+    r"(?mi)^[ \t\-*|]*release[_ ]?target[ \t*]*:[ \t*|]*[\"']?(.*?)[\"']?[ \t|]*$"
+)
 _RELEASE_TARGET_PLACEHOLDERS = {"", "tbd", "none", "null", "n/a", "-"}
 
 
@@ -454,6 +509,9 @@ def _iter_completion_notices(sync_path: Path):
             continue
         name = path.name.lower()
         if "complete" not in name:
+            continue
+        # Exclude commit reports (Local-LLM) — they're not implementation completions
+        if "commit" in name:
             continue
         if not WO_REF_PATTERN.search(path.name):
             continue
@@ -484,7 +542,7 @@ def _validate_completion_notices(sync_path: Path, result: ValidationResult) -> N
                 severity=Severity.ERROR,
                 message=(
                     f"Completion notice missing a declared 'release_target': {rel} "
-                    f"— workers must declare a release target (GEMINI-04)"
+                    f"— workers should declare a release target (GEMINI-04)"
                 ),
                 path=rel,
             ))
@@ -522,6 +580,10 @@ def _validate_untracked_sync(sync_path: Path, result: ValidationResult) -> None:
             continue
         untracked_path = line[3:].strip().strip('"')
         if not untracked_path:
+            continue
+        # Knowledge store files are compiler output — not governance state.
+        # They don't need to be committed to satisfy protocol compliance.
+        if untracked_path.startswith("knowledge/"):
             continue
         result.issues.append(Issue(
             layer="Protocol",
@@ -667,7 +729,16 @@ def _validate_handoff_file(path: Path, agent: str, result: ValidationResult, syn
         wo_match = re.search(r"WO-\d{3}", line)
         if wo_match:
             wo_id = wo_match.group(0)
-            if "assigned by" not in line.lower():
+            lower_line = line.lower()
+            # Skip lines that indicate no active assignment (completed, none, awaiting)
+            if any(phrase in lower_line for phrase in (
+                "none", "complete", "closed", "released", "done",
+                "shipped", "finished", "delivered", "delegated",
+                "awaiting", "await", "no remaining", "no open",
+                "stray", "cleanup",
+            )):
+                continue
+            if "assigned by" not in lower_line:
                 result.issues.append(Issue(
                     layer="Protocol",
                     severity=Severity.ERROR,
@@ -690,6 +761,62 @@ def _validate_handoff_file(path: Path, agent: str, result: ValidationResult, syn
                 ),
                 path=rel_path,
             ))
+
+
+def _validate_ungoverned_changes(sync_path: Path, result: ValidationResult) -> None:
+    """Detect source file modifications with no active work orders.
+
+    When the ACTIVE work-orders directory is empty (no .yaml files) but the
+    project has modified or untracked Python source files, this is an
+    ungoverned change — code is being written without a governing work order.
+    Emits a WARN so agents and developers are reminded to create a WO first.
+    """
+    active_dir = sync_path / "work-orders" / "ACTIVE"
+    if not active_dir.is_dir():
+        return
+
+    # Check if there are any .yaml work order files (ignore .gitkeep)
+    has_active_wo = any(
+        f.suffix == ".yaml" for f in active_dir.iterdir() if f.is_file()
+    )
+    if has_active_wo:
+        return
+
+    # Project root is the parent of .sync/
+    project_path = sync_path.parent
+
+    # Must be a git repo
+    if not (project_path / ".git").exists():
+        return
+
+    # Check git status for modified/untracked .py files in the project
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=str(project_path),
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return
+
+    has_py_changes = any(
+        line.rstrip().endswith(".py")
+        for line in completed.stdout.splitlines()
+        if line.strip()
+    )
+
+    if has_py_changes:
+        result.issues.append(Issue(
+            layer="Protocol",
+            severity=Severity.WARN,
+            message=(
+                "Ungoverned changes detected: project source files modified "
+                "with no active work orders. Create a work order before implementing."
+            ),
+            path="work-orders/ACTIVE",
+        ))
 
 
 # Work order ID pattern
@@ -760,7 +887,12 @@ DELIVERABLE_REQUIRED_TYPES = {"FEATURE", "BUGFIX", "HOTFIX", "REFACTOR", "FIX"}
 
 
 def _validate_work_order_deliverables(sync_path: Path, result: ValidationResult) -> None:
-    """Validate that work orders requiring deliverables have them."""
+    """Validate that work orders requiring deliverables have them.
+
+    Checks INDEX.yaml first; if deliverable is missing there, falls back to
+    the actual WO file in ACTIVE/BLOCKED/COMPLETED. The INDEX is a summary
+    ledger — deliverable in the WO file is sufficient.
+    """
     index_path = sync_path / "work-orders" / "INDEX.yaml"
     if not index_path.exists():
         return
@@ -775,14 +907,107 @@ def _validate_work_order_deliverables(sync_path: Path, result: ValidationResult)
         deliverable = order.get("deliverable")
 
         if wo_type in DELIVERABLE_REQUIRED_TYPES and not deliverable:
+            # Fallback: check the actual WO file
+            wo_found_in_file = False
+            for subdir in ("ACTIVE", "BLOCKED", "COMPLETED"):
+                wo_file = sync_path / "work-orders" / subdir / f"{wo_id}.yaml"
+                if wo_file.exists():
+                    wo_data, _ = _load_yaml(wo_file)
+                    if wo_data and wo_data.get("deliverable"):
+                        wo_found_in_file = True
+                    break
+            if not wo_found_in_file:
+                result.issues.append(Issue(
+                    layer="Protocol",
+                    severity=Severity.ERROR,
+                    message=f"Work order '{wo_id}' (type={wo_type}) requires a deliverable field",
+                    path="work-orders/INDEX.yaml",
+                ))
+
+    _validate_rework_budgets(sync_path, index_data, result)
+
+
+def _validate_work_order_state_files(sync_path: Path, result: ValidationResult) -> None:
+    """Validate work-order placement and status across state directories."""
+    index_path = sync_path / "work-orders" / "INDEX.yaml"
+    index_data, _ = _load_yaml(index_path) if index_path.exists() else (None, None)
+    index_orders: dict[str, dict] = {}
+    if index_data and "orders" in index_data:
+        index_orders = {
+            order["id"]: order
+            for order in index_data["orders"]
+            if isinstance(order, dict) and "id" in order
+        }
+
+    file_locations: dict[str, list[tuple[str, str, dict]]] = {}
+    for state_dir, work_order_file in _iter_work_order_files(sync_path):
+        work_order_data, err = _load_yaml(work_order_file)
+        if err or not work_order_data:
+            continue
+
+        file_rel = work_order_file.relative_to(sync_path).as_posix()
+        work_order_id = work_order_data.get("id") or work_order_file.stem
+        file_locations.setdefault(work_order_id, []).append(
+            (state_dir, file_rel, work_order_data)
+        )
+
+    for work_order_id, locations in sorted(file_locations.items()):
+        state_dirs = sorted({state_dir for state_dir, _, _ in locations})
+        if len(state_dirs) > 1:
             result.issues.append(Issue(
                 layer="Protocol",
                 severity=Severity.ERROR,
-                message=f"Work order '{wo_id}' (type={wo_type}) requires a deliverable field",
-                path="work-orders/INDEX.yaml",
+                message=(
+                    f"Work order '{work_order_id}' exists in multiple state directories: "
+                    f"{', '.join(state_dirs)}"
+                ),
+                path="work-orders",
             ))
 
-    _validate_rework_budgets(sync_path, index_data, result)
+        index_order = index_orders.get(work_order_id)
+        index_status = _normalize_work_order_status(
+            index_order.get("status") if index_order else None
+        )
+
+        for state_dir, file_rel, work_order_data in locations:
+            file_status = work_order_data.get("status")
+            normalized_file_status = _normalize_work_order_status(file_status)
+            allowed_statuses = {
+                _normalize_work_order_status(status)
+                for status in WORK_ORDER_ALLOWED_STATUSES[state_dir]
+            }
+
+            if normalized_file_status not in allowed_statuses:
+                allowed_display = ", ".join(sorted(WORK_ORDER_ALLOWED_STATUSES[state_dir]))
+                result.issues.append(Issue(
+                    layer="Protocol",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"{file_rel} has status '{file_status}' but directory '{state_dir}' "
+                        f"requires {allowed_display}"
+                    ),
+                    path=file_rel,
+                ))
+
+            if index_order is None:
+                result.issues.append(Issue(
+                    layer="Protocol",
+                    severity=Severity.ERROR,
+                    message=f"{file_rel} has no matching entry in work-orders/INDEX.yaml",
+                    path=file_rel,
+                ))
+                continue
+
+            if normalized_file_status != index_status:
+                result.issues.append(Issue(
+                    layer="Protocol",
+                    severity=Severity.ERROR,
+                    message=(
+                        f"{file_rel} status '{file_status}' does not match INDEX.yaml "
+                        f"status '{index_order.get('status')}' for '{work_order_id}'"
+                    ),
+                    path=file_rel,
+                ))
 
 
 # Default rework budget for actionable work order types

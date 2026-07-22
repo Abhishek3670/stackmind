@@ -322,8 +322,12 @@ Before ending session:
 10. For delegated actions, include `delegating_agent` field in completed items (LOCAL-LLM-01)
 11. For quality metrics, include `commit`, `branch`, `tested_at`; flag unverifiable (GEMMA-03)
 12. Flag any broken local test env as BLOCKED with open BUGFIX WO (GEMINI-01)
+13. **Run `stackmind shutdown <agent>`** — This is the MANDATORY final step. It
+    persists the handoff report, updates TREE.yaml session counters, and releases
+    any held locks. A session that does not execute this command is considered
+    incomplete and its state changes may be lost.
 
-No silent exits.
+No silent exits. No session ends without `stackmind shutdown <agent>`.
 
 ---
 

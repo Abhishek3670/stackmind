@@ -52,9 +52,15 @@ class TestVersionParsing:
 
     def test_read_only_cli_newer_major(self):
         assert _check_compatibility("1.0.0", "2.0.0") == "READ_ONLY"
+        assert _check_compatibility("1.1.0", "2.0.0") == "READ_ONLY"
 
     def test_incompatible_cli_older_major(self):
         assert _check_compatibility("2.0.0", "1.0.0") == "INCOMPATIBLE"
+
+    def test_cli_2_compatible_with_runtime_1_2(self):
+        # CLI 2.x is fully compatible with Runtime 1.2.x
+        assert _check_compatibility("1.2.0", "2.0.0") == "FULL"
+        assert _check_compatibility("1.2.5", "2.1.0") == "FULL"
 
 
 # ─── Integration Tests ────────────────────────────────────────

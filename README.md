@@ -156,7 +156,7 @@ stackmind init ./my-project --name "My Project"
 stackmind validate ./my-project
 
 # Run governed agent execution
-stackmind harness run-once
+stackmind harness run-once codex -p .
 ```
 
 Features:

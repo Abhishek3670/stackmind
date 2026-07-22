@@ -299,7 +299,7 @@ def lock_acquire(agent: str, project_path: str, session_id: str | None, force: b
 
     ok, message = acquire_lock(sync_path, agent, session_id=session_id, force=force)
     if ok:
-        console.print(f"[green][\u2713] {message}[/green]")
+        console.print(f"[green][+] {message}[/green]")
     else:
         console.print(f"[bold red][x] {message}[/bold red]")
         raise SystemExit(1)
@@ -337,7 +337,7 @@ def lock_release(agent: str, project_path: str, force: bool):
 
     ok, message = release_lock(sync_path, agent, force=force)
     if ok:
-        console.print(f"[green][\u2713] {message}[/green]")
+        console.print(f"[green][+] {message}[/green]")
     else:
         console.print(f"[bold red][x] {message}[/bold red]")
         raise SystemExit(1)

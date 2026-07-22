@@ -45,6 +45,18 @@ class ParsedCall:
 
 
 @dataclass(frozen=True)
+class ParsedRelation:
+    """A deterministic non-call relationship discovered by a frontend."""
+
+    path: str
+    source_qualified_name: str
+    relation: str
+    target_name: str
+    line: int
+    confidence: float = 1.0
+
+
+@dataclass(frozen=True)
 class ParsedDiagnostic:
     """A parser diagnostic that does not abort the batch."""
 
@@ -60,8 +72,10 @@ class ParsedFile:
 
     path: str
     module_name: str
+    tree: ast.Module | None = None
     symbols: list[ParsedSymbol] = field(default_factory=list)
     calls: list[ParsedCall] = field(default_factory=list)
+    relations: list[ParsedRelation] = field(default_factory=list)
     imports: dict[str, str] = field(default_factory=dict)
     diagnostics: list[ParsedDiagnostic] = field(default_factory=list)
 
@@ -140,6 +154,7 @@ def parse_file(path: Path, root: Path) -> ParsedFile:
     return ParsedFile(
         path=rel_path,
         module_name=module_name,
+        tree=tree,
         symbols=[module_symbol, *visitor.symbols],
         calls=visitor.calls,
         imports=dict(sorted(visitor.imports.items())),

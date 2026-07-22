@@ -10,6 +10,10 @@ from pathlib import Path
 from cli.lock import acquire_lock, release_lock
 from validators.knowledge.compiler.ir import CompilerIR, DiagnosticIR, SymbolIR
 from validators.knowledge.compiler.parse import ParsedFile, ParsedSymbol, parse_project
+from validators.knowledge.compiler.pydantic_compiler import augment_parsed_files as augment_pydantic_files
+from validators.knowledge.compiler.fastapi_compiler import augment_parsed_files as augment_fastapi_files
+from validators.knowledge.compiler.sqlalchemy_compiler import augment_parsed_files as augment_sqlalchemy_files
+from validators.knowledge.compiler.django_compiler import augment_parsed_files as augment_django_files
 from validators.knowledge.projections import build_projections
 from validators.knowledge.projections.reverse_index import lookup_reverse_edges
 from validators.knowledge.registry import SymbolRegistry, birth_key, node_id_for
@@ -80,6 +84,10 @@ def incremental_update(
 
     old_ir = read_ir(project_path)
     parsed_files = parse_project(project_path)
+    augment_pydantic_files(parsed_files)
+    augment_fastapi_files(parsed_files)
+    augment_sqlalchemy_files(parsed_files)
+    augment_django_files(parsed_files)
     parsed_by_path = {item.path: item for item in parsed_files}
     current_paths = set(parsed_by_path)
     old_symbols = old_ir.symbols
@@ -371,9 +379,9 @@ def _build_symbols(
     return sorted(symbols, key=lambda item: (item.path, item.qualified_name, item.node_id))
 
 
-def _module_hash(parsed: ParsedFile) -> str:
-    module = next(symbol for symbol in parsed.symbols if symbol.kind.lower() == 'module')
-    return module.content_hash
+def _module_hash(parsed: ParsedFile) -> str | None:
+    module = next((symbol for symbol in parsed.symbols if symbol.kind.lower() == 'module'), None)
+    return None if module is None else module.content_hash
 
 
 def _diagnostics(parsed_files: list[ParsedFile]) -> list[DiagnosticIR]:
@@ -406,9 +414,14 @@ def _apply_incremental_batch(
     built_at: str,
 ) -> KnowledgeWriteResult:
     sync_path = project_path / '.sync'
-    ok, message = acquire_lock(sync_path, agent, session_id='incremental')
-    if not ok:
-        raise RuntimeError(message)
+    external = not (sync_path / 'runtime').exists()
+
+    lock_acquired = False
+    if not external:
+        ok, message = acquire_lock(sync_path, agent, session_id='incremental')
+        if not ok:
+            raise RuntimeError(message)
+        lock_acquired = True
 
     registry = SymbolRegistry(project_path, agent=agent)
     try:
@@ -463,7 +476,8 @@ def _apply_incremental_batch(
             unchanged_paths=unchanged_paths,
         )
     finally:
-        release_lock(sync_path, agent)
+        if lock_acquired:
+            release_lock(sync_path, agent)
 
 
 def _write_if_changed(path: Path, document: dict) -> bool:
