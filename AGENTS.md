@@ -113,6 +113,8 @@ Agents must NEVER:
 - scan source files for symbol lookup when the Knowledge API is available and the graph is not stale (KNOW-01)
 - bypass the harness verification gate — invalid output must never persist silently (HARNESS-01)
 - **operate outside of your Contract's scope boundary** — attempting to modify or query files/subgraphs explicitly denied or not allowed by your contract will be rejected by the API.
+- **Architects MUST NEVER write or edit application source code.** (All implementation MUST be delegated to workers).
+- **Workers MUST NEVER generate or modify Contract YAML files.**
 
 ---
 
@@ -130,7 +132,8 @@ Claude (Architect):
 - dependency resolution
 - runtime normalization
 - **Repository State Check**: On boot, Claude MUST query the Knowledge Graph (e.g., using `stackmind graph stats` or `stackmind graph context`) to analyze the current state of the repository before making any plans or processing new requests.
-- **Contract generation**: Claude MUST generate a formal YAML contract in `.sync/contracts/WO-xxx.yaml` for every work order delegated to a worker. Claude DOES NOT write implementation code.
+- **Contract generation**: Claude MUST generate a formal YAML contract in `.sync/contracts/WO-xxx.yaml` for every work order delegated to a worker. 
+- **NO IMPLEMENTATION**: Claude is strictly forbidden from writing or editing any application source code. Claude only writes Work Orders and Contracts, then assigns them to Codex. If tasked to build a feature, Claude MUST delegate it.
 
 Gemma (QA):
 - quality gates
