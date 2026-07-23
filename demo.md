@@ -30,54 +30,22 @@ stackmind graph build -p .
 
 ---
 
-## 📝 Step 2: The User Writes the Task (Your Only Manual Step)
+## 📝 Step 2: Boot Claude and Ask in Plain English
 
-Create a feature request file in Claude's inbox:
+Instead of writing formal task files yourself, you can just boot Claude (the Architect) and give it your requirements in plain English. Claude will analyze the repository state using the Knowledge API and then generate the formal Work Order and Contract to delegate the work to the right agent.
 
-```powershell
-# Create the task file
-New-Item -ItemType File -Path .sync/inbox/claude/2026-07-23_CEO_init_calculator.md -Force
-```
+Open a **Claude Code** (or Gemini/Codex) session in your project directory and prompt:
 
-Write the following content into that file:
-
-```markdown
-# Work Order Request
-
-from: CEO
-to: claude
-priority: P1
-date: "2026-07-23"
-
-## Task
-Claude, please generate a Work Order and Contract, and assign it to Codex to build a simple calculator module. 
-Codex should create `calculator.py` with `add(a, b)` and `subtract(a, b)` functions, and write unit tests in `tests/test_calculator.py`.
-
-## Acceptance Criteria
-- `add(a, b)` returns the sum of a and b.
-- `subtract(a, b)` returns the difference of a and b.
-- Write unit tests verifying both functions.
-```
-
----
-
-## 🚀 Step 3: Run the Agent Pipeline
-
-Each agent is a separate LLM coding session (Claude Code, Codex CLI, Gemini CLI, etc.) pointed at your project directory. Every agent reads `AGENTS.md` on startup, which tells it how to check its inbox, follow governance rules, and hand off work to the next agent.
-
-> **How it works:** You open a new LLM session, tell it "You are agent `<name>`, read AGENTS.md and process your inbox", and the agent does the rest.
-
-### 1. Launch Claude (Architect)
-
-Open a **Claude Code** session in the project directory and prompt:
-
-```
+```text
 You are agent "claude" on the stackmind project at this directory.
 Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
 and process your unread inbox at .sync/inbox/claude/.
+
+Also, please act on this CEO directive:
+"Check the repository state using the Knowledge Graph. We need to build a simple calculator module. Generate a Work Order and Contract, and assign it to Codex. Codex should create `calculator.py` with `add(a, b)` and `subtract(a, b)` functions, and write unit tests in `tests/test_calculator.py`."
 ```
 
-Claude reads your feature request and autonomously:
+Claude reads the `AGENTS.md` protocol, queries the graph (`stackmind graph stats`), and autonomously:
 - Creates `.sync/work-orders/ACTIVE/WO-001.yaml` with the task breakdown.
 - Creates `.sync/contracts/WO-001.yaml` specifying which files the developer is allowed to touch.
 - Writes an assignment message to `.sync/inbox/codex/`.
@@ -85,7 +53,13 @@ Claude reads your feature request and autonomously:
 
 ---
 
-### 2. Launch Codex (Developer)
+## 🚀 Step 3: Run the Agent Pipeline
+
+The rest of the agents now run sequentially. Each agent is a separate LLM coding session pointed at your project directory. 
+
+> **How it works:** You open a new LLM session, tell it "You are agent `<name>`, read AGENTS.md and process your inbox", and the agent does the rest.
+
+### 1. Launch Codex (Developer)
 
 Open a **Codex CLI** (or any LLM coding agent) session and prompt:
 
@@ -105,7 +79,7 @@ Codex reads its assignment, queries the knowledge graph for context, and autonom
 
 ---
 
-### 3. Launch Gemma (QA Reviewer)
+### 2. Launch Gemma (QA Reviewer)
 
 Open a **Gemini CLI** (or any LLM agent) session and prompt:
 
@@ -123,7 +97,7 @@ Gemma reviews Codex's code and autonomously:
 
 ---
 
-### 4. Launch Claude (Route Approval → GitOps → Close)
+### 3. Launch Claude (Route Approval → GitOps → Close)
 
 Re-open a **Claude Code** session and prompt:
 
