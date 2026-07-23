@@ -34,15 +34,20 @@ stackmind graph build -p .
 
 Instead of writing formal task files yourself, you can just boot Claude (the Architect) and give it your requirements in plain English. Claude will analyze the repository state using the Knowledge API and then generate the formal Work Order and Contract to delegate the work to the right agent.
 
-Open a **Claude Code** (or Gemini/Codex) session in your project directory and prompt:
+**1. Boot Claude**
+Open a **Claude Code** (or Gemini/Codex) session in your project directory and enter the standard boot prompt:
 
 ```text
 You are agent "claude" on the stackmind project at this directory.
 Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
 and process your unread inbox at .sync/inbox/claude/.
+```
 
-Also, please act on this CEO directive:
-"We need to build a simple calculator module. Generate a Work Order and Contract, and assign it to Codex. Codex should create `calculator.py` with `add(a, b)` and `subtract(a, b)` functions, and write unit tests in `tests/test_calculator.py`."
+**2. Feed the Task**
+Wait for Claude to acknowledge its boot sequence (where it will autonomously query `stackmind graph stats` to check the repo state). Then, give it your feature request in plain English:
+
+```text
+CEO directive: We need to build a simple calculator module. Generate a Work Order and Contract, and assign it to Codex. Codex should create `calculator.py` with `add(a, b)` and `subtract(a, b)` functions, and write unit tests in `tests/test_calculator.py`.
 ```
 
 Claude reads the `AGENTS.md` protocol, queries the graph (`stackmind graph stats`), and autonomously:
