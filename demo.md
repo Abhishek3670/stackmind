@@ -75,8 +75,6 @@ Open a **Claude Code** session in the project directory and prompt:
 You are agent "claude" on the stackmind project at this directory.
 Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
 and process your unread inbox at .sync/inbox/claude/.
-
-CRITICAL: As defined in AGENTS.md, you are the Architect. You DO NOT write implementation code. Your job is to convert CEO requests into formal Work Orders and Contracts, and then delegate the implementation to Codex by writing to codex's inbox. Do not write calculator.py yourself!
 ```
 
 Claude reads your feature request and autonomously:
@@ -133,8 +131,6 @@ Re-open a **Claude Code** session and prompt:
 You are agent "claude" on the stackmind project at this directory.
 Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
 and process your unread inbox at .sync/inbox/claude/.
-
-CRITICAL: As defined in AGENTS.md, you are the Architect. You DO NOT write implementation code. Your job is to review QA verdicts, direct GitOps to commit the code, and close Work Orders.
 ```
 
 Claude receives Gemma's approval and autonomously:
