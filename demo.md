@@ -42,7 +42,7 @@ Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
 and process your unread inbox at .sync/inbox/claude/.
 
 Also, please act on this CEO directive:
-"Check the repository state using the Knowledge Graph. We need to build a simple calculator module. Generate a Work Order and Contract, and assign it to Codex. Codex should create `calculator.py` with `add(a, b)` and `subtract(a, b)` functions, and write unit tests in `tests/test_calculator.py`."
+"We need to build a simple calculator module. Generate a Work Order and Contract, and assign it to Codex. Codex should create `calculator.py` with `add(a, b)` and `subtract(a, b)` functions, and write unit tests in `tests/test_calculator.py`."
 ```
 
 Claude reads the `AGENTS.md` protocol, queries the graph (`stackmind graph stats`), and autonomously:

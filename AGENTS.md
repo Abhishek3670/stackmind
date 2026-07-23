@@ -129,6 +129,7 @@ Claude (Architect):
 - work orders
 - dependency resolution
 - runtime normalization
+- **Repository State Check**: On boot, Claude MUST query the Knowledge Graph (e.g., using `stackmind graph stats` or `stackmind graph context`) to analyze the current state of the repository before making any plans or processing new requests.
 - **Contract generation**: Claude MUST generate a formal YAML contract in `.sync/contracts/WO-xxx.yaml` for every work order delegated to a worker. Claude DOES NOT write implementation code.
 
 Gemma (QA):
