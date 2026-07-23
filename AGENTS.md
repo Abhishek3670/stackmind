@@ -186,11 +186,15 @@ When a worker finishes an assigned work order:
 
 Include: WO ID, modified files, summary of changes.
 
-3. Send completion notice to claude inbox:
+3. DO NOT send a completion notice directly to Claude. You must wait for Gemma's QA review.
 
-.sync/inbox/claude/<date>_<agent>_<wo-id>-complete.md
+# QA & Approval Protocol (Gemma)
 
-4. Do NOT mark WO as complete (Claude commits state changes)
+When Gemma receives a review request:
+1. Run tests (`pytest`) and validation (`stackmind validate .`).
+2. If tests FAIL: Write a `NEEDS_CHANGES` verdict back to the worker's inbox with the error logs.
+3. If tests PASS: Write an `APPROVED` verdict to Claude's inbox (`.sync/inbox/claude/<date>_gemma_<wo-id>-verdict.md`) so Claude knows it is safe to route for commit.
+4. Do NOT mark WO as complete (Claude commits state changes and closes WOs).
 
 ---
 

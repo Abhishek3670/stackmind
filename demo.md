@@ -79,7 +79,6 @@ Codex reads its assignment, queries the knowledge graph for context, and autonom
 - Writes `tests/test_calculator.py` with unit tests.
 - Runs `stackmind graph update -p .` to update the knowledge graph.
 - Sends a review request to `.sync/inbox/gemma/`.
-- Sends a completion notice to `.sync/inbox/claude/`.
 - Runs `stackmind shutdown codex` to persist its session.
 
 ---
