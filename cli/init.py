@@ -454,6 +454,11 @@ def init(
     now = datetime.now(timezone.utc).astimezone()
     init_timestamp = now.isoformat()
 
+    import sys
+    stackmind_bin = shutil.which("stackmind")
+    if not stackmind_bin:
+        stackmind_bin = f"{sys.executable} -m cli.main"
+
     context: dict[str, str] = {
         "PROJECT_NAME": name,
         "WORKSPACE_ROOT": str(project_path).replace("\\", "/"),
@@ -463,6 +468,7 @@ def init(
         "RUNTIME_VERSION": RUNTIME_VERSION,
         "OS_TYPE": os_type,
         "SHELL_TYPE": shell_type,
+        "STACKMIND_BIN_PATH": stackmind_bin.replace("\\", "/"),
     }
 
     # ── Step 4: Render AGENTS.md and README.md to project root ─

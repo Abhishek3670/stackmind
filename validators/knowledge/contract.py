@@ -132,6 +132,10 @@ class AgentContract:
         target_module = path_to_module(target_symbol.path)
         target_qname = target_symbol.qualified_name
         
+        # 0. Inherently denied nodes
+        if target_symbol.kind == "DenyPlaceholder":
+            return False
+        
         # 1. Deny rules (precedence)
         for deny_rule in self.deny_rules:
             pattern = deny_rule.get("module")

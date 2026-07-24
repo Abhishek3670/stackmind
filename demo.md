@@ -47,7 +47,7 @@ and process your unread inbox at .sync/inbox/claude/.
 Wait for Claude to acknowledge its boot sequence (where it will autonomously query `stackmind graph stats` to check the repo state). Then, give it your feature request in plain English:
 
 ```text
-CEO directive: We need to build a simple calculator module. Generate a Work Order and Contract, and assign it to Codex. Codex should create `calculator.py` with `add(a, b)` and `subtract(a, b)` functions, and write unit tests in `tests/test_calculator.py`.
+CEO directive: We need to build a full-stack login page. Generate Work Orders and Contracts. Assign the backend API to Codex (Express API in `server.js` for `/api/login`). Assign the frontend interface to Gemini (React component in `src/Login.jsx`). Both should include mock database/auth logic.
 ```
 
 Claude reads the `AGENTS.md` protocol, queries the graph (`stackmind graph stats`), and autonomously:
@@ -75,17 +75,36 @@ and process your unread inbox at .sync/inbox/codex/.
 ```
 
 Codex reads its assignment, queries the knowledge graph for context, and autonomously:
-- Implements `calculator.py` with `add()` and `subtract()`.
-- Writes `tests/test_calculator.py` with unit tests.
-- Runs `stackmind graph update -p .` to update the knowledge graph.
+- Implements `server.js` with the Express `/api/login` endpoint.
+- Writes backend unit tests.
+- Runs `stackmind graph update -p .` to update the knowledge graph. (StackMind automatically detects the `.js` files, requires `codebase-memory-mcp`, and seamlessly compiles them into the deterministic graph).
 - Sends a review request to `.sync/inbox/gemma/`.
 - Runs `stackmind shutdown codex` to persist its session.
 
 ---
 
-### 2. Launch Gemma (QA Reviewer)
+### 2. Launch Gemini (Frontend Lead)
 
-Open a **Gemini CLI** (or any LLM agent) session and prompt:
+Open a **Gemini CLI** session and prompt:
+
+```
+You are agent "gemini" on the stackmind project at this directory.
+Read AGENTS.md, boot from .sync/runtime/boot/gemini.boot.yaml,
+and process your unread inbox at .sync/inbox/gemini/.
+```
+
+Gemini reads its assignment from Claude, queries the knowledge graph (seeing Codex's API routes), and autonomously:
+- Implements `src/Login.jsx` with the React login form.
+- Wires the form to fetch from Codex's `/api/login` endpoint.
+- Runs `stackmind graph update -p .` to update the graph with its frontend components.
+- Sends a review request to `.sync/inbox/gemma/`.
+- Runs `stackmind shutdown gemini` to persist its session.
+
+---
+
+### 3. Launch Gemma (QA Reviewer)
+
+Open a new LLM session and prompt:
 
 ```
 You are agent "gemma" on the stackmind project at this directory.
@@ -93,15 +112,16 @@ Read AGENTS.md, boot from .sync/runtime/boot/gemma.boot.yaml,
 and process your unread inbox at .sync/inbox/gemma/.
 ```
 
-Gemma reviews Codex's code and autonomously:
-- Runs `pytest` and `stackmind validate .`.
-- Writes an `APPROVED` verdict to `.sync/inbox/claude/`.
-- Writes a verdict notice to `.sync/inbox/codex/`.
+Gemma reviews both Codex and Gemini's code and autonomously:
+- Validates the frontend-backend contract (React payload matches Express expectations).
+- Runs `npm test` and `stackmind validate .`.
+- Writes `APPROVED` verdicts to `.sync/inbox/claude/`.
+- Writes verdict notices to `.sync/inbox/codex/` and `.sync/inbox/gemini/`.
 - Runs `stackmind shutdown gemma` to persist its session.
 
 ---
 
-### 3. Launch Claude (Route Approval → GitOps → Close)
+### 4. Launch Claude (Route Approval)
 
 Re-open a **Claude Code** session and prompt:
 
@@ -111,23 +131,40 @@ Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
 and process your unread inbox at .sync/inbox/claude/.
 ```
 
-Claude receives Gemma's approval and autonomously:
-- Instructs Local-LLM (or handles directly) to commit the code to Git.
-- Marks WO-001 as `COMPLETED`.
-- Writes a status report to `.sync/inbox/CEO/` with the commit hash and test summary.
+Claude receives Gemma's approvals and autonomously:
+- Marks the Work Orders as `APPROVED`.
+- Instructs Local-LLM to commit the validated state to Git.
 - Runs `stackmind shutdown claude` to persist its session.
+
+---
+
+### 5. Launch Local-LLM (GitOps)
+
+Open a **Local-LLM** session and prompt:
+
+```
+You are agent "local-llm" on the stackmind project at this directory.
+Read AGENTS.md, boot from .sync/runtime/boot/local-llm.boot.yaml,
+and process your unread inbox at .sync/inbox/local-llm/.
+```
+
+Local-LLM reads Claude's commit instruction and autonomously:
+- Verifies `stackmind validate .` is clean.
+- Commits the code to Git following D025 protocols.
+- Writes a status report to `.sync/inbox/CEO/` with the commit hash.
+- Runs `stackmind shutdown local-llm` to persist its session.
 
 ---
 
 ## 🏁 Step 4: Verify Deliverables
 
 ```powershell
-# 1. Check the generated code
-cat calculator.py
-cat tests/test_calculator.py
+# 1. Check the generated full-stack code
+cat server.js
+cat src/Login.jsx
 
-# 2. Run the tests yourself
-pytest tests/test_calculator.py
+# 2. Run the mock server yourself
+node server.js
 
 # 3. Check the git log
 git log --oneline

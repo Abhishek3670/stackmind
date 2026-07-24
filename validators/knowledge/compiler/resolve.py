@@ -9,6 +9,9 @@ from pathlib import Path
 from cli.lock import acquire_lock, release_lock
 from validators.knowledge.registry import SymbolRegistry, birth_key, node_id_for
 
+import os
+import shutil
+
 from .ir import COMPILER_VERSION, CompilerIR, DiagnosticIR, EdgeIR, SymbolIR
 from .parse import ParsedCall, ParsedFile, ParsedRelation, ParsedSymbol, parse_project
 from .pydantic_compiler import augment_parsed_files as augment_pydantic_files
@@ -61,6 +64,19 @@ def compile_project(
     augment_health_files(parsed_files, project_path=project_path)
     augment_impact_files(parsed_files, project_path=project_path)
 
+    cbm_ir = None
+    if _needs_cbm(project_path):
+        from .cbm_compiler import CBMCompiler
+        # Lazy packaging check: if CBM is needed but unavailable, fail with instructions.
+        try:
+            subprocess.run(["npx", "codebase-memory-mcp", "--version"], check=True, capture_output=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raise RuntimeError(
+                "Multi-language support requires codebase-memory-mcp. "
+                "Please install it via: npm install -g codebase-memory-mcp"
+            )
+        cbm_ir = CBMCompiler().compile(project_path)
+
     sync_dir = project_path / ".sync"
     external_project = not (sync_dir / "runtime").exists()
 
@@ -82,6 +98,12 @@ def compile_project(
 
     edges = _resolve_edges(parsed_files, symbols, project_path)
     diagnostics = _diagnostics(parsed_files)
+    
+    if cbm_ir:
+        symbols.extend(cbm_ir.symbols)
+        edges.extend(cbm_ir.edges)
+        diagnostics.extend(cbm_ir.diagnostics)
+        
     return CompilerIR(
         revision_inputs={
             "compiler_version": COMPILER_VERSION,
@@ -90,10 +112,21 @@ def compile_project(
             "schema_version": "1",
             "sync_ref": _sync_ref(project_path),
         },
-        symbols=symbols,
+        symbols=sorted(symbols, key=lambda s: (s.path, s.qualified_name, s.node_id)),
         edges=edges,
         diagnostics=diagnostics,
     )
+
+def _needs_cbm(project_path: Path) -> bool:
+    excluded = {".git", ".sync", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "venv", ".venv", "node_modules"}
+    cbm_extensions = {".ts", ".js", ".go", ".java", ".c", ".cpp", ".rs", ".rb", ".php", ".cs", ".swift", ".kt"}
+    for dirpath, dirnames, filenames in os.walk(project_path):
+        dirnames[:] = [d for d in dirnames if d not in excluded]
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1].lower()
+            if ext in cbm_extensions:
+                return True
+    return False
 
 
 def _register_symbols(
