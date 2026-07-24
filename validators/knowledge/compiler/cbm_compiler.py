@@ -30,12 +30,19 @@ class CBMCompiler:
         # 1. Run the CBM indexer
         cmd = f"{self.executable} cli index_repository --repo-path {root} --mode full"
         try:
-            subprocess.run(
+            result = subprocess.run(
                 cmd, shell=True, check=True, cwd=str(root), capture_output=True, text=True
             )
-        except subprocess.CalledProcessError as exc:
+            # 2. Find the generated sqlite database from CBM's own output
+            out_data = json.loads(result.stdout)
+            project_name = out_data.get("project")
+            if not project_name:
+                raise ValueError("Missing 'project' field in CBM JSON output")
+            db_path = cache_dir / f"{project_name}.db"
+        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError) as exc:
             # If CBM crashes entirely on a file, we fail closed by emitting a DENY marker
             # This ensures the Contract Gate restricts access to this blindspot area.
+            error_msg = getattr(exc, "stderr", str(exc))
             return CompilerIR(
                 revision_inputs={"cbm": "failed"},
                 diagnostics=[
@@ -43,7 +50,7 @@ class CBMCompiler:
                         path=".",
                         severity="ERROR",
                         code="CBM_INDEX_FAILED",
-                        message=f"CBM indexer crashed: {exc.stderr}",
+                        message=f"CBM indexer crashed: {error_msg}",
                     )
                 ],
                 symbols=[
@@ -59,11 +66,6 @@ class CBMCompiler:
                 ]
             )
             
-        # 2. Find the generated sqlite database
-        # CBM uses the path to generate the db name (e.g. W-Aatish-Stuff-stackmind.db)
-        # We replace invalid characters in Windows/Linux paths
-        db_name = str(root).replace(":", "").replace("\\", "-").replace("/", "-") + ".db"
-        db_path = cache_dir / db_name
         
         if not db_path.exists():
              return CompilerIR(
@@ -149,12 +151,14 @@ class CBMCompiler:
                 )
             )
             
-        # Extract revision inputs (we use the indexed_at timestamp for tracing)
-        project_row = db.execute("SELECT * FROM projects LIMIT 1").fetchone()
-        indexed_at = project_row[1] if project_row else "unknown"
+        # Extract revision inputs (must be stable for byte-identical determinism)
+        try:
+            version_out = subprocess.run(f"{self.executable} --version", shell=True, capture_output=True, text=True, check=True).stdout.strip()
+        except Exception:
+            version_out = "unknown"
         
         return CompilerIR(
-            revision_inputs={"cbm": indexed_at},
+            revision_inputs={"cbm_version": version_out, "schema_version": "1"},
             symbols=symbols,
             edges=edges,
             diagnostics=[],
