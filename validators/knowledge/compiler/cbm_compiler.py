@@ -39,7 +39,7 @@ class CBMCompiler:
             if not project_name:
                 raise ValueError("Missing 'project' field in CBM JSON output")
             db_path = cache_dir / f"{project_name}.db"
-        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError) as exc:
+        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, FileNotFoundError) as exc:
             # If CBM crashes entirely on a file, we fail closed by emitting a DENY marker
             # This ensures the Contract Gate restricts access to this blindspot area.
             error_msg = getattr(exc, "stderr", str(exc))
