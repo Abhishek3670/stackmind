@@ -115,3 +115,14 @@ def verify_post_execution(
             raise ContractAccessDenied(
                 f"Modification to file {file_path} is outside allowed contract scope"
             )
+            
+    # 4. Check D025 Destructive Operations in commands
+    if hasattr(decision, "commands") and decision.commands:
+        destructive_keywords = ["rm ", "git reset", "git push", "git filter-repo", "git filter-branch", "docker rm", "docker rmi", "del "]
+        for cmd in decision.commands:
+            lower_cmd = cmd.lower()
+            if any(kw in lower_cmd for kw in destructive_keywords):
+                raise ContractAccessDenied(
+                    f"Command '{cmd}' triggered D025 Destructive Operations Safeguard. "
+                    "Backup, verify, and CEO escalation required."
+                )

@@ -93,6 +93,7 @@ class HarnessDecision:
     release_target: str | None
     retrieval_queries: tuple[str, ...]
     uncertainty: tuple[str, ...]
+    commands: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -177,6 +178,7 @@ class EchoLLMProvider:
             ),
             'retrieval_queries': [request.retrieval.query] if request.retrieval.query else [],
             'uncertainty': [],
+            'commands': [],
         }
         if release_target:
             payload['release_target'] = release_target
@@ -344,6 +346,12 @@ class AgentRunner:
                 )
                 events_write = self._build_events_write(stage_inputs, hold_ms, lock_wait_ms)
                 self._apply_ops(self.project_path, [final_report, events_write])
+                
+                # Execute bash commands after applying ops
+                if decision.commands:
+                    import subprocess
+                    for cmd in decision.commands:
+                        subprocess.run(cmd, shell=True, cwd=str(self.project_path), check=True)
             finally:
                 release_lock(self.sync_path, self.agent)
 
@@ -462,6 +470,7 @@ class AgentRunner:
             release_target=str(release_target).strip() if release_target else None,
             retrieval_queries=tuple(str(item) for item in payload.get('retrieval_queries', [])),
             uncertainty=tuple(str(item) for item in payload.get('uncertainty', [])),
+            commands=tuple(str(item) for item in payload.get('commands', [])),
         )
 
     def _validate_staged_state(self, stage_inputs: dict[str, Any]) -> list[str]:
