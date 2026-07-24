@@ -486,8 +486,20 @@ def init(
             project_path / "README.md",
             context,
         )
+        
+    plan_template = templates_dir / "PLAN.template.md"
+    if plan_template.exists():
+        render_template_file(plan_template, project_path / "PLAN.md", context)
+        
+    changelog_template = templates_dir / "CHANGELOG.template.md"
+    if changelog_template.exists():
+        render_template_file(changelog_template, project_path / "CHANGELOG.md", context)
+        
+    version_template = templates_dir / "VERSION.template"
+    if version_template.exists():
+        render_template_file(version_template, project_path / "VERSION", context)
 
-    console.print("[bold green][+][/bold green] Rendered AGENTS.md")
+    console.print("[bold green][+][/bold green] Rendered AGENTS.md, PLAN.md, CHANGELOG.md, VERSION")
 
     # ── Step 5: Create .sync/ structure ───────────────────────
     sync_path.mkdir(parents=True, exist_ok=True)

@@ -301,7 +301,7 @@ The harness:
 | Codex | Backend Lead | 0 | Idle |
 | Gemini | Frontend Lead | 0 | Idle |
 | Gemma | QA Lead | 0 | Idle |
-| Local-LLM | GitOps Lead | 0 | Idle |
+| Local-LLM | GitOps & Release Lead | 0 | Idle |
 
 ---
 
