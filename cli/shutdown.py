@@ -16,10 +16,15 @@ from rich.console import Console
 console = Console()
 
 
-from cli.yaml_utils import load_yaml, save_yaml
+def _load_yaml(path: Path) -> dict | None:
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
-_load_yaml = load_yaml
-_save_yaml = save_yaml
+
+def _save_yaml(path: Path, data: dict) -> None:
+    path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
 
 
 def _next_session_id(sync_path: Path, agent: str) -> int | None:

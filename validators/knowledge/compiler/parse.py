@@ -14,6 +14,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+DEFAULT_EXCLUDED_DIRS = frozenset({
+    ".git",
+    ".sync",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    "node_modules",
+    "venv",
+    ".venv",
+    "env",
+    ".env",
+    "site-packages",
+    "build",
+    "dist",
+    ".pytest-tmp",
+})
+
+
 @dataclass(frozen=True)
 class ParsedSymbol:
     """A source definition discovered by the parser."""

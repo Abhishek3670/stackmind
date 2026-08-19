@@ -10,7 +10,7 @@ import hashlib
 import re
 from pathlib import Path
 
-from .parse import ParsedFile, ParsedRelation, ParsedSymbol
+from .parse import DEFAULT_EXCLUDED_DIRS, ParsedFile, ParsedRelation, ParsedSymbol
 
 try:
     import tomllib
@@ -20,22 +20,7 @@ except ImportError:
     except ImportError:
         tomllib = None  # type: ignore
 
-EXCLUDED_DIRS = {
-    ".git",
-    ".sync",
-    "__pycache__",
-    ".pytest_cache",
-    ".ruff_cache",
-    "node_modules",
-    "venv",
-    ".venv",
-    "env",
-    ".env",
-    "site-packages",
-    "build",
-    "dist",
-    ".pytest-tmp",
-}
+EXCLUDED_DIRS = DEFAULT_EXCLUDED_DIRS
 
 REQ_PKG_PATTERN = re.compile(r"^([a-zA-Z0-9_\-\.]+)\s*([<>=!~].*)?$")
 

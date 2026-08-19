@@ -10,23 +10,14 @@ import hashlib
 import re
 from pathlib import Path
 
-from .parse import ParsedFile, ParsedRelation, ParsedSymbol
+from .parse import DEFAULT_EXCLUDED_DIRS, ParsedFile, ParsedRelation, ParsedSymbol
 
 try:
     import yaml
 except ImportError:
     yaml = None  # type: ignore
 
-EXCLUDED_DIRS = {
-    ".git",
-    ".sync",
-    "__pycache__",
-    ".pytest_cache",
-    ".ruff_cache",
-    "node_modules",
-    "venv",
-    ".venv",
-}
+EXCLUDED_DIRS = DEFAULT_EXCLUDED_DIRS
 
 
 def augment_parsed_files(

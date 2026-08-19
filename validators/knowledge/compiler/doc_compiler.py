@@ -10,25 +10,9 @@ import hashlib
 import re
 from pathlib import Path
 
-from .parse import ParsedFile, ParsedRelation, ParsedSymbol
+from .parse import DEFAULT_EXCLUDED_DIRS, ParsedFile, ParsedRelation, ParsedSymbol
 
-EXCLUDED_DIRS = {
-    ".git",
-    ".sync",
-    "__pycache__",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".mypy_cache",
-    "node_modules",
-    "venv",
-    ".venv",
-    "env",
-    ".env",
-    "site-packages",
-    "build",
-    "dist",
-    ".pytest-tmp",
-}
+EXCLUDED_DIRS = DEFAULT_EXCLUDED_DIRS
 
 LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$")
