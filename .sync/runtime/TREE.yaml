@@ -41,7 +41,7 @@ agents:
     - WO-037
     blockers: []
     boot_version: v1.0
-    last_task: Initial .sync commit (432c1f7)
+    last_task: Session ended via shutdown
     next_task: Commit POC work + implement WO-037 (archive legacy plans)
     session_count: 1
     status: idle
@@ -59,7 +59,7 @@ inbox_unread:
   gemini: 0
   gemma: 0
   local-llm: 3
-last_updated: '2026-08-19T10:22:39.419191+00:00'
+last_updated: '2026-08-19T10:45:52.706569+00:00'
 latest_decision: D-004
 latest_decision_title: "Gemma Contract Hardening \u2014 Dependency Manifest Gate +\
   \ Secret-Scan Gate (Q1+Q2)"
@@ -69,7 +69,7 @@ quality:
   build_status: GREEN
   frontend_coverage: not-run
   tests_passing: '386'
-release: 2.0.0
+release: 2.1.0-dev
 schema_version: 1
 tree_version: 14
 work_orders:
