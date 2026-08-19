@@ -62,23 +62,21 @@ def augment_parsed_files(
             parsed_by_path,
         )
 
-    # 2. requirements*.txt, Dockerfiles, and compose files (using pruned os.walk)
-    import os
+    # 2. requirements*.txt, Dockerfiles, and compose files
     import fnmatch
-    requirements_files: list[Path] = []
-    docker_files: list[Path] = []
-    compose_files: list[Path] = []
-
-    for dirpath, dirnames, filenames in os.walk(project_path):
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
-        for filename in filenames:
-            path = Path(dirpath) / filename
-            if fnmatch.fnmatch(filename, "requirements*.txt"):
-                requirements_files.append(path)
-            elif fnmatch.fnmatch(filename, "Dockerfile*"):
-                docker_files.append(path)
-            elif fnmatch.fnmatch(filename, "docker-compose*.yml") or fnmatch.fnmatch(filename, "docker-compose*.yaml"):
-                compose_files.append(path)
+    requirements_files = [
+        p for p in project_path.rglob("requirements*.txt")
+        if not any(part in EXCLUDED_DIRS for part in p.relative_to(project_path).parts)
+    ]
+    docker_files = [
+        p for p in project_path.rglob("Dockerfile*")
+        if not any(part in EXCLUDED_DIRS for part in p.relative_to(project_path).parts)
+    ]
+    compose_files = [
+        p for p in project_path.rglob("docker-compose*")
+        if (p.name.endswith(".yml") or p.name.endswith(".yaml"))
+        and not any(part in EXCLUDED_DIRS for part in p.relative_to(project_path).parts)
+    ]
 
     for req_path in sorted(requirements_files):
         rel = req_path.relative_to(project_path).as_posix()

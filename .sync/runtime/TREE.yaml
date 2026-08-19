@@ -1,19 +1,23 @@
 active_dependencies: []
 agents:
   claude:
-    assigned_work_orders: []
+    assigned_work_orders:
+    - WO-036
+    - WO-037
     blockers: []
     boot_version: v1.0
     last_task: Session ended via shutdown
-    next_task: "None \u2014 awaiting next assignment"
-    session_count: 2
+    next_task: Await Codex completion of WO-036, Local-LLM completion of commit +
+      WO-037
+    session_count: 3
     status: idle
   codex:
-    assigned_work_orders: []
+    assigned_work_orders:
+    - WO-036
     blockers: []
     boot_version: v1.0
     last_task: Session ended via shutdown
-    next_task: "None \u2014 awaiting next assignment"
+    next_task: Implement WO-036 (scope-violation E2E test + D025 gate)
     session_count: 8
     status: idle
   gemini:
@@ -33,11 +37,12 @@ agents:
     session_count: 6
     status: idle
   local-llm:
-    assigned_work_orders: []
+    assigned_work_orders:
+    - WO-037
     blockers: []
     boot_version: v1.0
     last_task: Initial .sync commit (432c1f7)
-    next_task: Await next commit directive
+    next_task: Commit POC work + implement WO-037 (archive legacy plans)
     session_count: 1
     status: idle
 compliance:
@@ -50,11 +55,11 @@ decisions_pending: []
 graph_version: null
 inbox_unread:
   claude: 0
-  codex: 2
+  codex: 3
   gemini: 0
   gemma: 0
-  local-llm: 1
-last_updated: '2026-07-22T22:02:20.119898+00:00'
+  local-llm: 3
+last_updated: '2026-08-19T10:22:39.419191+00:00'
 latest_decision: D-004
 latest_decision_title: "Gemma Contract Hardening \u2014 Dependency Manifest Gate +\
   \ Secret-Scan Gate (Q1+Q2)"
@@ -63,12 +68,12 @@ quality:
   backend_coverage: 83%
   build_status: GREEN
   frontend_coverage: not-run
-  tests_passing: '257'
+  tests_passing: '386'
 release: 2.0.0
 schema_version: 1
-tree_version: 13
+tree_version: 14
 work_orders:
   index_file: work-orders/INDEX.yaml
-  total_active: 0
+  total_active: 2
   total_blocked: 0
-  total_completed: 28
+  total_completed: 35

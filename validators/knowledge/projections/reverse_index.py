@@ -21,6 +21,7 @@ PROJECTOR_INPUTS = (
     'edges.confidence',
     'edges.path',
     'edges.line',
+    'edges.evidence',
 )
 
 
@@ -44,6 +45,7 @@ def build_reverse_index_documents(ir: CompilerIR) -> dict[str, dict[str, Any]]:
         by_target.setdefault(edge.target_id, []).append(
             {
                 'confidence': edge.confidence,
+                'evidence': [item.to_dict() for item in edge.evidence],
                 'line': edge.line,
                 'path': edge.path,
                 'relation': edge.relation,

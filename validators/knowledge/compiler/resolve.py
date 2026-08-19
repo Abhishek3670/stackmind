@@ -29,11 +29,6 @@ from .dead_code_compiler import augment_parsed_files as augment_dead_code_files
 from .health_compiler import augment_parsed_files as augment_health_files
 from .impact_compiler import augment_parsed_files as augment_impact_files
 
-try:  # pragma: no cover - optional dependency path.
-    import jedi  # type: ignore
-except ImportError:  # pragma: no cover - deterministic static fallback is tested.
-    jedi = None
-
 
 def compile_project(
     project_path: Path,
@@ -64,19 +59,6 @@ def compile_project(
     augment_health_files(parsed_files, project_path=project_path)
     augment_impact_files(parsed_files, project_path=project_path)
 
-    cbm_ir = None
-    if _needs_cbm(project_path):
-        from .cbm_compiler import CBMCompiler
-        # Lazy packaging check: if CBM is needed but unavailable, fail with instructions.
-        try:
-            subprocess.run(["npx", "codebase-memory-mcp", "--version"], check=True, capture_output=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            raise RuntimeError(
-                "Multi-language support requires codebase-memory-mcp. "
-                "Please install it via: npm install -g codebase-memory-mcp"
-            )
-        cbm_ir = CBMCompiler().compile(project_path)
-
     sync_dir = project_path / ".sync"
     external_project = not (sync_dir / "runtime").exists()
 
@@ -98,12 +80,6 @@ def compile_project(
 
     edges = _resolve_edges(parsed_files, symbols, project_path)
     diagnostics = _diagnostics(parsed_files)
-    
-    if cbm_ir:
-        symbols.extend(cbm_ir.symbols)
-        edges.extend(cbm_ir.edges)
-        diagnostics.extend(cbm_ir.diagnostics)
-        
     return CompilerIR(
         revision_inputs={
             "compiler_version": COMPILER_VERSION,
@@ -116,17 +92,6 @@ def compile_project(
         edges=edges,
         diagnostics=diagnostics,
     )
-
-def _needs_cbm(project_path: Path) -> bool:
-    excluded = {".git", ".sync", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "venv", ".venv", "node_modules"}
-    cbm_extensions = {".ts", ".js", ".go", ".java", ".c", ".cpp", ".rs", ".rb", ".php", ".cs", ".swift", ".kt"}
-    for dirpath, dirnames, filenames in os.walk(project_path):
-        dirnames[:] = [d for d in dirnames if d not in excluded]
-        for filename in filenames:
-            ext = os.path.splitext(filename)[1].lower()
-            if ext in cbm_extensions:
-                return True
-    return False
 
 
 def _register_symbols(
@@ -285,19 +250,6 @@ def _resolve_call(
                     source_symbol=source_symbol,
                     target_id=match.node_id,
                     target_name=f"{match.path}:{match.qualified_name}",
-                    resolution='RESOLVED',
-                )
-
-            jedi_match = _resolve_with_jedi(call, project_path, by_global_name)
-            if jedi_match is not None:
-                return _edge(
-                    relation='CALLS',
-                    path=call.path,
-                    line=call.line,
-                    confidence=0.9,
-                    source_symbol=source_symbol,
-                    target_id=jedi_match.node_id,
-                    target_name=f"{jedi_match.path}:{jedi_match.qualified_name}",
                     resolution='RESOLVED',
                 )
         return _edge(
@@ -488,44 +440,4 @@ def _git_value(project_path: Path, args: list[str]) -> str | None:
     except (FileNotFoundError, OSError, subprocess.CalledProcessError):
         return None
     return completed.stdout.strip() or None
-
-
-def _resolve_with_jedi(
-    call: ParsedCall,
-    project_path: Path,
-    by_global_name: dict[str, SymbolIR],
-) -> SymbolIR | None:
-    if jedi is None:
-        return None
-    source_path = project_path / call.path
-    try:
-        script = jedi.Script(
-            path=str(source_path),
-            project=jedi.Project(str(project_path)),
-        )
-        names = script.goto(
-            line=call.line,
-            column=0,
-            follow_imports=True,
-            follow_builtin_imports=False,
-        )
-    except Exception:
-        return None
-    for name in names:
-        module_path = getattr(name, "module_path", None)
-        if module_path is None:
-            continue
-        try:
-            rel = Path(module_path).resolve().relative_to(project_path).as_posix()
-        except ValueError:
-            continue
-        full_name = (
-            f"{rel[:-3].replace('/', '.')}.{name.name}"
-            if rel.endswith(".py")
-            else name.name
-        )
-        match = by_global_name.get(full_name)
-        if match is not None:
-            return match
-    return None
 

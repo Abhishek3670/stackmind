@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from .analyze import analyze
 from .graph import graph
 from .harness import harness
 
@@ -387,6 +388,7 @@ def lock_status(project_path: str):
 
 cli.add_command(graph)
 cli.add_command(harness)
+cli.add_command(analyze)
 
 if __name__ == "__main__":
     cli()

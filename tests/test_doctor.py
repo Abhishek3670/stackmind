@@ -83,8 +83,8 @@ class TestDoctor:
         assert "claude" in captured.out
         assert "codex" in captured.out
 
-    def test_doctor_reports_coverage_threshold(self, fresh_project, capsys):
+    def test_doctor_reports_migration_status(self, fresh_project, capsys):
         doctor(fresh_project)
         captured = capsys.readouterr()
-        assert "Validator Test Coverage" in captured.out
-        assert "≥90%" in captured.out
+        assert "Migration Status" in captured.out
+        assert "Runtime is up to date" in captured.out

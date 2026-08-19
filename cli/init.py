@@ -371,19 +371,15 @@ def validate_result(project_path: Path, agents: list[str]) -> list[str]:
 
 
 def _detect_os() -> tuple[str, str]:
-    """Detect the current OS and shell type.
+    """Detect the current OS and shell type."""
+    import platform
 
-    Returns:
-        Tuple of (os_type, shell_type).
-    """
-    import sys
-
-    if sys.platform == "win32":
+    system = platform.system()
+    if system == "Windows":
         return "Windows 10/11", "PowerShell"
-    elif sys.platform == "darwin":
+    if system == "Darwin":
         return "macOS", "Bash/Zsh"
-    else:
-        return "Linux", "Bash"
+    return "Linux", "Bash"
 
 
 def init(

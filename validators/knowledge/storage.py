@@ -44,6 +44,7 @@ def latest_revision_id(project_path: Path) -> int:
 
 
 def _edge(edge: EdgeIR) -> dict[str, Any]:
+    """Serialize an edge, including optional evidence arrays."""
     return edge.to_dict()
 
 

@@ -9,23 +9,17 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+
 import yaml
 from rich.console import Console
 
 console = Console()
 
 
-def _load_yaml(path: Path) -> dict | None:
-    """Load YAML file, return None on error."""
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+from cli.yaml_utils import load_yaml, save_yaml
 
-
-def _save_yaml(path: Path, data: dict) -> None:
-    """Save data to YAML file."""
-    path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+_load_yaml = load_yaml
+_save_yaml = save_yaml
 
 
 def _next_session_id(sync_path: Path, agent: str) -> int | None:

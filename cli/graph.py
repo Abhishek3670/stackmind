@@ -240,14 +240,50 @@ def query_command(
     help='Project path',
 )
 @click.option('--limit', default=25, show_default=True, type=int)
+@click.option('--evidence-type', multiple=True, help='Filter evidence: runtime or static')
 @click.option('--json-output', is_flag=True, help='Emit machine-readable JSON')
-def callers_command(target: str, project_path: str, limit: int, json_output: bool):
+def callers_command(
+    target: str,
+    project_path: str,
+    limit: int,
+    evidence_type: tuple[str, ...],
+    json_output: bool,
+):
     """Show direct callers of a symbol."""
     from rich.console import Console
 
     console = Console()
     api = KnowledgeAPI(Path(project_path).resolve())
-    envelope = api.callers(target, limit=limit)
+    envelope = api.callers(target, limit=limit, evidence_type=evidence_type or None)
+    _emit_envelope(console, envelope, json_output=json_output)
+
+
+@graph.command('flows')
+@click.argument('source')
+@click.argument('sink', required=False)
+@click.option(
+    '--project',
+    '-p',
+    'project_path',
+    type=click.Path(exists=True),
+    default='.',
+    help='Project path',
+)
+@click.option('--limit', default=25, show_default=True, type=int)
+@click.option('--json-output', is_flag=True, help='Emit machine-readable JSON')
+def flows_command(
+    source: str,
+    sink: str | None,
+    project_path: str,
+    limit: int,
+    json_output: bool,
+):
+    """Show observed FLOWS_TO paths from SOURCE to optional SINK."""
+    from rich.console import Console
+
+    console = Console()
+    api = KnowledgeAPI(Path(project_path).resolve())
+    envelope = api.flows(source, sink, limit=limit)
     _emit_envelope(console, envelope, json_output=json_output)
 
 
@@ -1206,6 +1242,16 @@ def _emit_envelope(console: Any, envelope: Any, *, json_output: bool) -> None:
             f"- {item.kind} {item.qualified_name} [{item.node_id}] "
             f"{item.path} confidence={item.confidence}"
         )
+        if item.provenance_summary:
+            console.print(f"  provenance: {item.provenance_summary}")
+        if item.evidence:
+            console.print(
+                "  evidence: "
+                + ", ".join(
+                    f"{evidence.provider}/{evidence.evidence_type}"
+                    for evidence in item.evidence
+                )
+            )
 
 
 @graph.command('tasks')

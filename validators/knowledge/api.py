@@ -5,11 +5,18 @@ from __future__ import annotations
 import json
 import math
 import subprocess
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
 
-from validators.knowledge.enricher import embedding_cache_path, is_ai_stale
+from validators.knowledge.analysis.base import AnalysisEvidence
+from validators.knowledge.enricher import (
+    EmbeddingBackend,
+    EmbeddingRequest,
+    embedding_cache_path,
+    is_ai_stale,
+)
 from validators.knowledge.projections.reverse_index import lookup_reverse_edges
 from validators.knowledge.projections.search import search_symbols
 from validators.knowledge.registry import SymbolRegistry
@@ -31,15 +38,19 @@ class KnowledgeResult:
     alias_matched: bool = False
     reason: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    evidence: tuple[AnalysisEvidence, ...] = ()
+    provenance_summary: str = ''
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
             'alias_matched': self.alias_matched,
             'confidence': self.confidence,
+            'evidence': [item.to_dict() for item in self.evidence],
             'kind': self.kind,
             'metadata': dict(sorted(self.metadata.items())),
             'node_id': self.node_id,
             'path': self.path,
+            'provenance_summary': self.provenance_summary,
             'qualified_name': self.qualified_name,
             'reason': self.reason,
             'signature': self.signature,
@@ -81,14 +92,18 @@ class ContextEntry:
     confidence: float
     text: str
     reason: str
+    why_retrieved: tuple[str, ...] = ()
+    access_status: str = 'allowed'
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            'access_status': self.access_status,
             'confidence': self.confidence,
             'node_id': self.node_id,
             'rank': self.rank,
             'reason': self.reason,
             'text': self.text,
+            'why_retrieved': list(self.why_retrieved),
         }
 
 
@@ -125,13 +140,19 @@ class ContextBundle:
 class KnowledgeAPI:
     """Read-only query surface for compiled StackMind knowledge."""
 
-    def __init__(self, project_path: Path, contract: AgentContract | str | Path | None = None) -> None:
+    def __init__(
+        self,
+        project_path: Path,
+        contract: AgentContract | str | Path | None = None,
+        embedding_backend: EmbeddingBackend | None = None,
+    ) -> None:
         self.project_path = project_path.resolve()
         self.registry = SymbolRegistry(self.project_path)
         if contract is not None and not isinstance(contract, AgentContract):
             self.contract = AgentContract.load(contract, self.project_path)
         else:
             self.contract = contract
+        self.embedding_backend = embedding_backend
         self._cached_ir = None
 
     @property
@@ -310,7 +331,9 @@ class KnowledgeAPI:
                         'resolution': edge.get('resolution'),
                         'source_id': edge.get('source_id'),
                         'target_name': edge.get('target_name'),
+                        'why_retrieved': _why_for_edge(edge),
                     },
+                    evidence=edge.get('evidence', ()),
                     contract=contract,
                 )
                 results_by_node[neighbor_id] = (next_depth, result)
@@ -345,12 +368,27 @@ class KnowledgeAPI:
         *,
         limit: int = 10,
         query_embedding: Sequence[float] | None = None,
+        embedding_backend: EmbeddingBackend | None = None,
         contract: AgentContract | str | Path | None = None,
     ) -> KnowledgeEnvelope:
         """Search by embedding similarity when available, else text-search fallback."""
         self._check_expiration(contract)
         revision, git_commit = self._revision_meta()
         stale = self._is_stale()
+        if query_embedding is None:
+            backend = embedding_backend or self.embedding_backend
+            if backend is not None:
+                try:
+                    query_embedding = backend.embed(
+                        EmbeddingRequest(
+                            node_id='query',
+                            content_hash=_query_hash(query),
+                            privacy_mode='query',
+                            text=query,
+                        )
+                    ).vector
+                except (ImportError, RuntimeError, ValueError):
+                    query_embedding = None
         if query_embedding is not None:
             semantic_results = self._semantic_search(query_embedding, limit=limit, contract=contract)
             if semantic_results:
@@ -376,6 +414,7 @@ class KnowledgeAPI:
                     node,
                     confidence=confidence,
                     reason='text-search',
+                    metadata={'why_retrieved': ['lexical_match']},
                     contract=contract,
                 )
             )
@@ -392,10 +431,11 @@ class KnowledgeAPI:
         target: str,
         *,
         limit: int = 25,
+        evidence_type: Sequence[str] | None = None,
         contract: AgentContract | str | Path | None = None,
     ) -> KnowledgeEnvelope:
         """Return direct callers of a symbol."""
-        return self.traverse(
+        envelope = self.traverse(
             target,
             relation='CALLS',
             direction='inbound',
@@ -403,6 +443,94 @@ class KnowledgeAPI:
             limit=limit,
             contract=contract,
         )
+        if not evidence_type:
+            return envelope
+        filtered = tuple(
+            result for result in envelope.results
+            if _evidence_matches(result.evidence, evidence_type)
+        )
+        return KnowledgeEnvelope(
+            revision=envelope.revision,
+            git_commit=envelope.git_commit,
+            stale=envelope.stale,
+            semantic=envelope.semantic,
+            results=filtered,
+            truncated=envelope.truncated,
+            truncation_reason=envelope.truncation_reason,
+        )
+
+    def flows(
+        self,
+        source: str,
+        sink: str | None = None,
+        *,
+        limit: int = 25,
+        contract: AgentContract | str | Path | None = None,
+    ) -> KnowledgeEnvelope:
+        """Return observed FLOWS_TO paths from a source symbol to optional sink."""
+        self._check_expiration(contract)
+        revision, git_commit = self._revision_meta()
+        stale = self._is_stale()
+        seed = self._resolve_one(source, contract=contract)
+        if seed is None:
+            return KnowledgeEnvelope(revision, git_commit, stale, False, ())
+
+        node = self._lookup_node_by_id(seed.node_id, contract=contract)
+        if node is None:
+            return KnowledgeEnvelope(revision, git_commit, stale, False, ())
+        results: list[KnowledgeResult] = []
+        for edge in node.get('deterministic', {}).get('outgoing', []):
+            if edge.get('relation') != 'FLOWS_TO':
+                continue
+            target_name = str(edge.get('target_name', ''))
+            if sink and sink.lower() not in target_name.lower():
+                continue
+            evidence = _evidence_from_edge(edge)
+            result_node = (
+                self._lookup_node_by_id(str(edge.get('target_id')), contract=contract)
+                if edge.get('target_id')
+                else None
+            )
+            metadata = {
+                'line': edge.get('line'),
+                'relation': 'FLOWS_TO',
+                'resolution': edge.get('resolution'),
+                'source_id': edge.get('source_id'),
+                'target_name': target_name,
+                'why_retrieved': ['flow_path'],
+            }
+            if evidence:
+                metadata.update(evidence[0].metadata)
+            if result_node is not None:
+                results.append(
+                    self._result_from_node(
+                        result_node,
+                        confidence=float(edge.get('confidence', 0.0) or 0.0),
+                        reason='flow_path',
+                        metadata=metadata,
+                        evidence=evidence,
+                        contract=contract,
+                    )
+                )
+            else:
+                results.append(
+                    KnowledgeResult(
+                        node_id=str(edge.get('target_id') or target_name),
+                        kind='FlowPath',
+                        path=str(edge.get('path', '')),
+                        qualified_name=target_name,
+                        signature='',
+                        confidence=round(float(edge.get('confidence', 0.0) or 0.0), 4),
+                        reason='flow_path',
+                        metadata=metadata,
+                        evidence=evidence,
+                        provenance_summary=_provenance_summary(evidence),
+                    )
+                )
+        ordered = tuple(
+            sorted(results, key=lambda item: (-item.confidence, item.path, item.qualified_name))[:limit]
+        )
+        return KnowledgeEnvelope(revision, git_commit, stale, False, ordered)
 
     def impact(
         self,
@@ -496,7 +624,7 @@ class KnowledgeAPI:
 
             inbound = self.callers(result.node_id, limit=3, contract=contract)
             for neighbor in inbound.results:
-                score = 80 - (10 * int(neighbor.metadata.get('depth', 1)))
+                score = 80 - (10 * int(neighbor.metadata.get('depth', 1))) + _evidence_boost(neighbor.evidence)
                 existing = ranked.get(neighbor.node_id)
                 if existing is None or score > existing[0]:
                     ranked[neighbor.node_id] = (score, neighbor)
@@ -510,7 +638,7 @@ class KnowledgeAPI:
                 contract=contract,
             )
             for neighbor in outbound.results:
-                score = 70 - (10 * int(neighbor.metadata.get('depth', 1)))
+                score = 70 - (10 * int(neighbor.metadata.get('depth', 1))) + _evidence_boost(neighbor.evidence)
                 existing = ranked.get(neighbor.node_id)
                 if existing is None or score > existing[0]:
                     ranked[neighbor.node_id] = (score, neighbor)
@@ -537,6 +665,8 @@ class KnowledgeAPI:
                     confidence=result.confidence,
                     text=block,
                     reason=result.reason or 'context',
+                    why_retrieved=tuple(result.metadata.get('why_retrieved', [result.reason or 'context'])),
+                    access_status='allowed',
                 )
             )
             text_blocks.append(block)
@@ -658,6 +788,7 @@ class KnowledgeAPI:
         alias_matched: bool = False,
         reason: str | None = None,
         metadata: dict[str, Any] | None = None,
+        evidence: Sequence[AnalysisEvidence | dict[str, Any]] | None = None,
         contract: AgentContract | str | Path | None = None,
     ) -> KnowledgeResult:
         node_id = str(node.get('node_id', ''))
@@ -669,6 +800,7 @@ class KnowledgeAPI:
         result_metadata = dict(metadata or {})
         if isinstance(ai_block, dict) and ai_block:
             result_metadata['ai_stale'] = is_ai_stale(node)
+        evidence_items = _evidence_items(evidence or ())
         return KnowledgeResult(
             node_id=str(node.get('node_id', '')),
             kind=str(node.get('kind', '')),
@@ -680,6 +812,8 @@ class KnowledgeAPI:
             alias_matched=alias_matched,
             reason=reason,
             metadata=result_metadata,
+            evidence=tuple(evidence_items),
+            provenance_summary=_provenance_summary(evidence_items),
         )
 
     def _result_from_record(
@@ -714,6 +848,7 @@ class KnowledgeAPI:
             confidence=round(float(confidence), 4),
             alias_matched=alias_matched,
             reason=reason,
+            provenance_summary='registry metadata',
         )
 
     def _revision_meta(self) -> tuple[int, str | None]:
@@ -767,6 +902,7 @@ class KnowledgeAPI:
                         node,
                         confidence=round(score, 4),
                         reason='semantic-search',
+                        metadata={'why_retrieved': ['semantic_similarity']},
                         contract=contract,
                     ),
                 )
@@ -793,6 +929,11 @@ def _context_block(result: KnowledgeResult) -> str:
         lines.append(f'summary: {result.summary}')
     if result.reason:
         lines.append(f'reason: {result.reason}')
+    if result.provenance_summary:
+        lines.append(f'provenance: {result.provenance_summary}')
+    why = result.metadata.get('why_retrieved')
+    if why:
+        lines.append(f"why_retrieved: {', '.join(str(item) for item in why)}")
     relation = result.metadata.get('relation')
     if relation:
         lines.append(f'relation: {relation}')
@@ -813,8 +954,63 @@ def _cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float |
     return numerator / (left_norm * right_norm)
 
 
+def _evidence_from_edge(edge: dict[str, Any]) -> tuple[AnalysisEvidence, ...]:
+    return tuple(_evidence_items(edge.get('evidence', ())))
+
+
+def _evidence_items(values: Sequence[AnalysisEvidence | dict[str, Any]]) -> list[AnalysisEvidence]:
+    return [
+        item if isinstance(item, AnalysisEvidence) else AnalysisEvidence.from_dict(item)
+        for item in values
+    ]
+
+
+def _provenance_summary(evidence: Sequence[AnalysisEvidence]) -> str:
+    if not evidence:
+        return 'static'
+    providers = ', '.join(sorted({item.provider for item in evidence}))
+    kinds = ', '.join(sorted({item.evidence_type for item in evidence}))
+    return f'{len(evidence)} evidence item(s): {providers}; {kinds}'
+
+
+def _evidence_matches(evidence: Sequence[AnalysisEvidence], wanted: Sequence[str]) -> bool:
+    lowered = {item.lower() for item in wanted}
+    if 'static' in lowered and not evidence:
+        return True
+    for item in evidence:
+        evidence_type = item.evidence_type.lower()
+        provider = item.provider.lower()
+        if 'runtime' in lowered and ('runtime' in evidence_type or 'runtime' in provider):
+            return True
+        if 'static' in lowered and 'runtime' not in evidence_type and 'runtime' not in provider:
+            return True
+    return False
+
+
+def _why_for_edge(edge: dict[str, Any]) -> list[str]:
+    relation = edge.get('relation')
+    reasons = ['caller_relationship' if relation == 'CALLS' else 'graph_relationship']
+    if relation == 'FLOWS_TO':
+        reasons = ['flow_path']
+    if any(item.provider == 'runtime-tracer' for item in _evidence_from_edge(edge)):
+        reasons.append('runtime_confirmed')
+    return reasons
+
+
+def _evidence_boost(evidence: Sequence[AnalysisEvidence]) -> int:
+    if any(item.provider == 'runtime-tracer' for item in evidence):
+        return 15
+    if evidence:
+        return 5
+    return 0
+
+
 def _estimate_tokens(text: str) -> int:
-    return max(1, math.ceil(len(text) / 4))
+    return max(1, (len(text) + 3) // 4)
+
+
+def _query_hash(query: str) -> str:
+    return hashlib.sha256(query.encode('utf-8')).hexdigest()
 
 
 def _git_output(project_path: Path, *args: str) -> str:
@@ -848,7 +1044,7 @@ def _lookup_rank(record: dict[str, Any], needle: str) -> tuple[int, float, bool]
         for alias in record.get('aliases', [])
         if isinstance(alias, str)
     ]
-    alias_names = [_alias_name(alias) for alias in aliases]
+    alias_names = [alias.partition(':')[2] for alias in aliases]
 
     if node_id.lower() == lowered:
         return 0, 1.0, False
@@ -865,11 +1061,6 @@ def _lookup_rank(record: dict[str, Any], needle: str) -> tuple[int, float, bool]
     if current_path.lower() == lowered:
         return 6, 0.9, False
     return -1, 0.0, False
-
-
-def _alias_name(alias: str) -> str:
-    _, _, qualified_name = alias.partition(':')
-    return qualified_name
 
 
 __all__ = [

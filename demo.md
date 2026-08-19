@@ -1,41 +1,74 @@
-# StackMind Multi-Agent Pipeline Demo: Empty Project Guide
+# StackMind Multi-Agent Pipeline & Code-Graph Intelligence Demo
 
-This guide demonstrates how to initialize StackMind on a **completely empty project** and run the multi-agent pipeline to develop, test, review, and commit a new feature from scratch.
-
-In this workflow, **the user only writes a feature request** to Claude's inbox. Each agent is then launched as an LLM session (Claude Code, OpenAI Codex, Gemini, etc.) that reads `AGENTS.md`, checks its inbox, and follows the governance protocol autonomously.
+This guide demonstrates how to initialize StackMind on a project and run the autonomous multi-agent pipeline to architect, develop, test, review, and commit a full-stack feature from scratch under strict **Agent Governance (CONTRACT-01)** and **Code-Graph Intelligence (KNOW-01)**.
 
 ---
 
-## 🛠️ Step 1: Create and Initialize the Project
+## 🏗️ How StackMind Works: The Governance Model
 
-Start by creating a brand-new directory and setting up the StackMind runtime:
+In StackMind, **agents never parse raw files blindly or act without boundaries**:
 
-```powershell
-# 1. Create a new directory and initialize Git
-mkdir stackmind-demo
-cd stackmind-demo
-git init
-
-# 2. Initialize StackMind
-stackmind init .
-
-# 3. Build the initial empty code graph
-stackmind graph build -p .
+```
+                              CEO / User
+                                  │
+                                  ▼
+                        Claude (Senior Architect)
+             ┌────────────────────┴────────────────────┐
+             ▼                                         ▼
+   Work Orders (Tasks)                        Contracts (Scope Boundaries)
+   WO-001 (Backend API)                       WO-001 (Backend Scope: app/**)
+   WO-002 (Frontend UI)                       WO-002 (Frontend Scope: src/**)
+             │                                         │
+             ├────────────────────┬────────────────────┤
+             ▼                                         ▼
+      Codex (Backend Lead)                   Gemini (Frontend Lead)
+      - Implements Backend API               - Queries Graph for Backend Endpoints
+      - Captures Runtime & Flow Evidence     - Implements Frontend UI Form
+      - Updates Knowledge Graph              - Updates Knowledge Graph
+             │                                         │
+             └────────────────────┬────────────────────┘
+                                  ▼
+                           Gemma (QA Lead)
+             ┌────────────────────┴────────────────────┐
+      [Contract Scope Audits]                 [Quality Gates]
+      [Frontend-Backend Contract]             [Secret Scans & Manifests]
+                                  │
+                                  ▼ (APPROVED)
+                         Local-LLM (GitOps)
+                            [Git Commit]
 ```
 
-* **What happened automatically:**
-  - `.sync/` directory containing agent configuration, boot snapshots, and workspaces is created.
-  - `AGENTS.md` is generated in the root, defining the team hierarchy and governance rules.
-  - The initial knowledge graph index is built.
+1. **Claude (Architect)** plans tasks, creates **Work Orders**, and bounds workers with **Contracts** (`.sync/contracts/WO-xxx.yaml`).
+2. **Codex (Backend Lead)** implements backend routes and models, and captures runtime/flow evidence.
+3. **Gemini (Frontend Lead)** queries the Knowledge Graph to discover backend routes and implements frontend components within its own contract.
+4. **Gemma (QA Lead)** audits both implementations against their contracts, cross-validates the API interface, and enforces test/secret gates.
+5. **Local-LLM (GitOps)** verifies workspace integrity and creates signed Git commits.
 
 ---
 
-## 📝 Step 2: Boot Claude and Ask in Plain English
+## 🛠️ Step 1: Initialize the Project & Build Knowledge Graph
 
-Instead of writing formal task files yourself, you can just boot Claude (the Architect) and give it your requirements in plain English. Claude will analyze the repository state using the Knowledge API and then generate the formal Work Order and Contract to delegate the work to the right agent.
+```powershell
+# 1. Initialize StackMind in your repository
+stackmind init .
 
-**1. Boot Claude**
-Open a **Claude Code** (or Gemini/Codex) session in your project directory and enter the standard boot prompt:
+# 2. Build the initial deterministic Knowledge Graph
+stackmind graph build -p .
+
+# 3. Check graph status
+stackmind graph stats -p .
+```
+
+* **What happens automatically:**
+  - `.sync/` directory created (runtime snapshots, contracts, inboxes, and work-orders).
+  - `AGENTS.md` generated with canonical governance rules.
+  - Source files compiled into deterministic IR with canonical `birth_key()` node identities.
+
+---
+
+## 📝 Step 2: Launch Claude (Architect & Planner)
+
+Open a **Claude** session and boot with the standard prompt:
 
 ```text
 You are agent "claude" on the stackmind project at this directory.
@@ -43,146 +76,191 @@ Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
 and process your unread inbox at .sync/inbox/claude/.
 ```
 
-**2. Feed the Task**
-Wait for Claude to acknowledge its boot sequence (where it will autonomously query `stackmind graph stats` to check the repo state). Then, give it your feature request in plain English:
+### Prompt Claude with your requirement:
 
 ```text
-CEO directive: We need to build a full-stack login page. Generate Work Orders and Contracts. Assign the backend API to Codex (Express API in `server.js` for `/api/login`). Assign the frontend interface to Gemini (React component in `src/Login.jsx`). Both should include mock database/auth logic.
+CEO directive: We need to build a full-stack authentication feature. 
+Assign the backend API to Codex (FastAPI endpoint /api/login with token generation and auth tests). 
+Assign the frontend UI to Gemini (React Login component in src/Login.jsx that connects to the backend API).
+Generate Work Orders and formal Contracts for both agents.
 ```
 
-Claude reads the `AGENTS.md` protocol, queries the graph (`stackmind graph stats`), and autonomously:
-- Creates `.sync/work-orders/ACTIVE/WO-001.yaml` with the task breakdown.
-- Creates `.sync/contracts/WO-001.yaml` specifying which files the developer is allowed to touch.
-- Writes an assignment message to `.sync/inbox/codex/`.
-- Runs `stackmind shutdown claude` to persist its session.
+**What Claude does autonomously:**
+1. Queries the graph using `stackmind graph stats` or `stackmind graph context`.
+2. Creates `.sync/work-orders/ACTIVE/WO-001.yaml` (Backend) and `.sync/work-orders/ACTIVE/WO-002.yaml` (Frontend).
+3. Generates formal contracts defining strict boundaries:
+   - `.sync/contracts/WO-001.yaml` (`allow: ["app.auth.*", "tests.test_auth"]`, `write: "read-write"`).
+   - `.sync/contracts/WO-002.yaml` (`allow: ["src.components.Login.*", "src.tests.*"]`, `write: "read-write"`).
+4. Writes assignment notices to `.sync/inbox/codex/` and `.sync/inbox/gemini/`.
+5. Runs `stackmind shutdown claude` to persist session state.
 
 ---
 
-## 🚀 Step 3: Run the Agent Pipeline
+## 💻 Step 3: Launch Codex (Backend Implementation & Tracing)
 
-The rest of the agents now run sequentially. Each agent is a separate LLM coding session pointed at your project directory. 
+Open a **Codex** session and boot:
 
-> **How it works:** You open a new LLM session, tell it "You are agent `<name>`, read AGENTS.md and process your inbox", and the agent does the rest.
-
-### 1. Launch Codex (Developer)
-
-Open a **Codex CLI** (or any LLM coding agent) session and prompt:
-
-```
+```text
 You are agent "codex" on the stackmind project at this directory.
 Read AGENTS.md, boot from .sync/runtime/boot/codex.boot.yaml,
 and process your unread inbox at .sync/inbox/codex/.
 ```
 
-Codex reads its assignment, queries the knowledge graph for context, and autonomously:
-- Implements `server.js` with the Express `/api/login` endpoint.
-- Writes backend unit tests.
-- Runs `stackmind graph update -p .` to update the knowledge graph. (StackMind automatically detects the `.js` files, requires `codebase-memory-mcp`, and seamlessly compiles them into the deterministic graph).
-- Sends a review request to `.sync/inbox/gemma/`.
-- Runs `stackmind shutdown codex` to persist its session.
+**What Codex does autonomously:**
+1. Reads its contract in `.sync/contracts/WO-001.yaml` (fail-closed boundary).
+2. Queries the Knowledge API for symbol context:
+   ```powershell
+   stackmind graph context "auth service login endpoint" --token-budget 2000 -p .
+   ```
+3. Implements the `/api/login` backend route and unit tests in `tests/test_auth.py`.
+4. Runs live runtime call tracing and data-flow analysis to capture provenance:
+   ```powershell
+   # Trace live test execution into runtime CALLS evidence
+   stackmind analyze runtime -- pytest tests/test_auth.py
+
+   # Analyze static taint movement into FLOWS_TO evidence
+   stackmind analyze flows -- app/auth.py
+   ```
+5. Updates the knowledge graph:
+   ```powershell
+   stackmind graph update -p .
+   ```
+6. Writes its session handoff and runs `stackmind shutdown codex`.
 
 ---
 
-### 2. Launch Gemini (Frontend Lead)
+## 🎨 Step 4: Launch Gemini (Frontend Implementation)
 
-Open a **Gemini CLI** session and prompt:
+Open a **Gemini** session and boot:
 
-```
+```text
 You are agent "gemini" on the stackmind project at this directory.
 Read AGENTS.md, boot from .sync/runtime/boot/gemini.boot.yaml,
 and process your unread inbox at .sync/inbox/gemini/.
 ```
 
-Gemini reads its assignment from Claude, queries the knowledge graph (seeing Codex's API routes), and autonomously:
-- Implements `src/Login.jsx` with the React login form.
-- Wires the form to fetch from Codex's `/api/login` endpoint.
-- Runs `stackmind graph update -p .` to update the graph with its frontend components.
-- Sends a review request to `.sync/inbox/gemma/`.
-- Runs `stackmind shutdown gemini` to persist its session.
+**What Gemini does autonomously:**
+1. Reads its contract in `.sync/contracts/WO-002.yaml` (constrained to frontend scope `src/**`).
+2. Queries the compiled Knowledge Graph to discover the newly added backend routes:
+   ```powershell
+   stackmind graph context "login endpoint request model" -p .
+   ```
+3. Implements `src/Login.jsx` with input validation and connects it to Codex's `/api/login` endpoint.
+4. Writes frontend tests.
+5. Updates the knowledge graph with frontend components:
+   ```powershell
+   stackmind graph update -p .
+   ```
+6. Writes its session handoff and runs `stackmind shutdown gemini`.
 
 ---
 
-### 3. Launch Gemma (QA Reviewer)
+## 🛡️ Step 5: Launch Gemma (QA Verification & Gates)
 
-Open a new LLM session and prompt:
+Open a **Gemma** session and boot:
 
-```
+```text
 You are agent "gemma" on the stackmind project at this directory.
 Read AGENTS.md, boot from .sync/runtime/boot/gemma.boot.yaml,
 and process your unread inbox at .sync/inbox/gemma/.
 ```
 
-Gemma reviews both Codex and Gemini's code and autonomously:
-- Validates the frontend-backend contract (React payload matches Express expectations).
-- Runs `npm test` and `stackmind validate .`.
-- Writes `APPROVED` verdicts to `.sync/inbox/claude/`.
-- Writes verdict notices to `.sync/inbox/codex/` and `.sync/inbox/gemini/`.
-- Runs `stackmind shutdown gemma` to persist its session.
+**What Gemma validates autonomously:**
+1. **Frontend-Backend Interface Compatibility:** Verifies React request payload matches Codex's backend schema.
+2. **Dependency Manifest Gate (D-004 Q1):** Verifies `pyproject.toml` / `package.json` exist.
+3. **Secret Scan Gate (D-004 Q2):** Greps for hardcoded secrets, API keys, or tokens (asserts 0 secrets).
+4. **Test Suite Validation:** Executes `pytest` & frontend test suites (asserts 100% pass rate).
+5. **Contract Scope Audits:** Verifies neither Codex nor Gemini edited files outside their contract `allow` lists.
+6. **Workspace Integrity:** Runs `stackmind validate .`.
+7. Dispatches `APPROVED` verdicts for both WO-001 and WO-002 to `.sync/inbox/claude/` and runs `stackmind shutdown gemma`.
 
 ---
 
-### 4. Launch Claude (Route Approval)
+## 🔄 Step 6: Launch Claude (Work Order Completion)
 
-Re-open a **Claude Code** session and prompt:
+Re-open **Claude** to process Gemma's approvals:
 
-```
+```text
 You are agent "claude" on the stackmind project at this directory.
 Read AGENTS.md, boot from .sync/runtime/boot/claude.boot.yaml,
 and process your unread inbox at .sync/inbox/claude/.
 ```
 
-Claude receives Gemma's approvals and autonomously:
-- Marks the Work Orders as `APPROVED`.
-- Instructs Local-LLM to commit the validated state to Git.
-- Runs `stackmind shutdown claude` to persist its session.
+**Claude:**
+- Moves `WO-001.yaml` and `WO-002.yaml` to `.sync/work-orders/COMPLETED/`.
+- Updates `INDEX.yaml` and `TREE.yaml` counters.
+- Dispatches release commit directive to `.sync/inbox/local-llm/`.
+- Runs `stackmind shutdown claude`.
 
 ---
 
-### 5. Launch Local-LLM (GitOps)
+## 📦 Step 7: Launch Local-LLM (GitOps Release Commit)
 
 Open a **Local-LLM** session and prompt:
 
-```
+```text
 You are agent "local-llm" on the stackmind project at this directory.
 Read AGENTS.md, boot from .sync/runtime/boot/local-llm.boot.yaml,
 and process your unread inbox at .sync/inbox/local-llm/.
 ```
 
-Local-LLM reads Claude's commit instruction and autonomously:
-- Verifies `stackmind validate .` is clean.
-- Commits the code to Git following D025 protocols.
-- Writes a status report to `.sync/inbox/CEO/` with the commit hash.
-- Runs `stackmind shutdown local-llm` to persist its session.
+**Local-LLM:**
+- Verifies clean state with `stackmind validate .`.
+- Creates a clean Git commit:
+  ```powershell
+  git add .
+  git commit -m "feat(auth): complete full-stack login service (WO-001, WO-002)"
+  ```
+- Runs `stackmind shutdown local-llm`.
 
 ---
 
-## 🏁 Step 4: Verify Deliverables
+## 🔍 Code-Graph Intelligence Query Reference
 
+StackMind includes built-in graph intelligence commands for querying symbols, data flow, and runtime evidence:
+
+### 1. Inbound Callers with Evidence Filtering
 ```powershell
-# 1. Check the generated full-stack code
-cat server.js
-cat src/Login.jsx
+# Show all callers of a function
+stackmind graph callers app.auth.login -p .
 
-# 2. Run the mock server yourself
-node server.js
+# Filter only callers observed during live test runs
+stackmind graph callers app.auth.login --evidence-type runtime -p .
+```
 
-# 3. Check the git log
-git log --oneline
+### 2. Data-Flow & Taint Analysis Paths (`FLOWS_TO`)
+```powershell
+# Trace taint paths from source (e.g. request.args) to sink (e.g. db.execute)
+stackmind graph flows request.args db.execute -p .
+```
 
-# 4. Read your completion report
-cat .sync/inbox/CEO/*.md
+### 3. Unified RAG Context Assembly
+```powershell
+# Assemble compact, multi-signal prompt context bounded by contract
+stackmind graph context "user password validation" --token-budget 1500 -p .
+```
+
+### 4. Governance & Scope Verification
+```powershell
+# Inspect active agent contract
+stackmind graph contract show WO-001
+
+# Explain why a node or module was denied access
+stackmind graph explain-denial WO-001 --node auth.secrets
 ```
 
 ---
 
-## 📌 Key Concepts
+## 📌 Core Governance Rules & Protocols
 
-| Concept | Description |
-|---------|-------------|
-| **AGENTS.md** | The governance contract every agent reads on startup. Defines authority, rules, and protocols. |
-| **Inbox System** | Agents communicate via files in `.sync/inbox/<agent>/`. Messages are moved to `_read/` after processing. |
-| **Boot Snapshots** | Each agent's state is tracked in `.sync/runtime/boot/<agent>.boot.yaml`. |
-| **Knowledge Graph** | `stackmind graph build` / `graph update` compiles source code into a queryable symbol index. |
-| **Work Orders** | Formal task assignments created by the architect, stored in `.sync/work-orders/ACTIVE/`. |
-| **Contracts** | Scope boundaries defining which files/modules a worker agent is allowed to modify. |
-| **Shutdown Protocol** | Every agent must run `stackmind shutdown <agent>` before ending its session. |
+| Rule / ID | Name | Role / Description |
+|---|---|---|
+| **Claude** | Senior Architect | Plans tasks, authors Work Orders, generates Contracts, and closes approved work. (Never writes app code). |
+| **Codex** | Backend Lead | Implements backend APIs, databases, business logic, and captures runtime/flow evidence. |
+| **Gemini** | Frontend Lead | Implements frontend components, UIs, client workflows, and cross-service UI integration. |
+| **Gemma** | QA Lead | Reviews diffs, audits contract boundaries, enforces test pass rates, secret scans, and manifests. |
+| **Local-LLM** | GitOps Lead | Executes Git operations following D025 safety protocols and persists verified release commits. |
+| **CONTRACT-01** | Agent Contract Layer | Every worker is bounded by a structured YAML contract specifying `allow`, `deny`, file limits, and token budgets. |
+| **KNOW-01** | Knowledge API | Agents query compiled graph context instead of manually scraping files. Queries are checked against contract scope. |
+| **D025** | Destructive Safety | Destructive actions require backup verification, pre-condition checks, and architect approval. |
+| **Shutdown** | Mandatory Exit | Every agent session must conclude with `stackmind shutdown <agent>`. |

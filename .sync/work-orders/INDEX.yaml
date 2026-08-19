@@ -310,8 +310,111 @@ orders:
       type: "module"
       path: "validators/knowledge/compiler/impact_compiler.py"
       description: "Impact mapping engine tracing call stack and library changes down to their dependents"
-next_id: 29
-total_active: 0
-total_completed: 28
+  - id: "WO-029"
+    type: RESEARCH
+    title: "POC Phase 0 — Verify Current SKC Contracts & Map Integration Points"
+    status: COMPLETED
+    priority: P0
+    assigned_agents: ["codex"]
+    dependencies: []
+    deliverable:
+      type: "doc"
+      path: "docs/poc-phase0-mapping.md"
+      description: "Implementation mapping note connecting POC targets to confirmed code symbols"
+  - id: "WO-030"
+    type: FEATURE
+    title: "POC Phase 1A — Multi-Provenance Evidence Model & Edge Extension"
+    status: COMPLETED
+    priority: P0
+    assigned_agents: ["codex"]
+    dependencies: ["WO-029"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/analysis/"
+      description: "Provider architecture with evidence model, normalization, and FLOWS_TO relation support"
+  - id: "WO-031"
+    type: FEATURE
+    title: "POC Phase 1B — Real EmbeddingBackend Implementation"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-029"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/embedding/"
+      description: "Real embedding backend with caching, local model support, and API integration"
+  - id: "WO-032"
+    type: FEATURE
+    title: "POC Phase 2 — Runtime Call Tracing Provider"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-030"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/analysis/runtime.py"
+      description: "Runtime call tracer with sys.setprofile, evidence normalization, and CLI integration"
+  - id: "WO-033"
+    type: FEATURE
+    title: "POC Phase 3 — FLOWS_TO Data-Flow Analysis Provider"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-030"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/analysis/flow.py"
+      description: "Bounded data-flow analyzer producing FLOWS_TO edges with provenance"
+  - id: "WO-034"
+    type: FEATURE
+    title: "POC Phase 4 — Provenance-Aware Query Layer & Unified RAG"
+    status: COMPLETED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-030", "WO-031", "WO-032", "WO-033"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/api.py"
+      description: "Provenance-aware query layer with unified RAG retrieval"
+  - id: "WO-035"
+    type: RESEARCH
+    title: "POC Phase 5 — Evaluation & Benchmarking"
+    status: COMPLETED
+    priority: P2
+    assigned_agents: ["codex", "gemma"]
+    dependencies: ["WO-034"]
+    deliverable:
+      type: "doc"
+      path: "docs/poc-evaluation-report.md"
+      description: "POC evaluation report with metrics, success answers, and graduation recommendations"
+  - id: "WO-036"
+    type: FEATURE
+    title: "PLANv4 Phase 1.7 — Scope-Violation E2E Test & D025 Code Enforcement"
+    status: ACTIVE
+    priority: P0
+    assigned_agents: ["codex"]
+    dependencies: []
+    deliverable:
+      type: "module"
+      paths:
+        - "tests/test_scope_violation_e2e.py"
+        - "validators/harness/d025_gate.py"
+        - "validators/harness/runner.py"
+      description: "Scope-violation E2E test and D025 destructive operation gate for harness runner"
+  - id: "WO-037"
+    type: CHORE
+    title: "Archive Legacy Plan Documents to docs/archive/"
+    status: ACTIVE
+    priority: P2
+    assigned_agents: ["local-llm"]
+    dependencies: []
+    deliverable:
+      type: "chore"
+      paths:
+        - "docs/archive/"
+      description: "Archived legacy plan documents"
+next_id: 38
+total_active: 2
+total_completed: 35
 total_blocked: 0
 

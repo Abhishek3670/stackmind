@@ -44,15 +44,10 @@ def augment_parsed_files(
 
     if project_path is not None:
         project_path = project_path.resolve()
-        import os
-        for dirpath, dirnames, filenames in os.walk(project_path):
-            dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
-            for filename in filenames:
-                if filename.endswith(".md"):
-                    path = Path(dirpath) / filename
-                    rel_str = path.relative_to(project_path).as_posix()
-                    doc_paths.append((rel_str, path))
-        doc_paths.sort(key=lambda item: item[0])
+        for path in sorted(project_path.rglob("*.md")):
+            if not any(part in EXCLUDED_DIRS for part in path.relative_to(project_path).parts):
+                rel_str = path.relative_to(project_path).as_posix()
+                doc_paths.append((rel_str, path))
 
     # Also check if any .md files are already in parsed_files
     existing_paths = {p.path for p in parsed_files}

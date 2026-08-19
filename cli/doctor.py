@@ -150,14 +150,17 @@ def doctor(project_path: Path) -> bool:
     # Migration status
     console.print(f"\n[bold]Migration Status[/bold]")
     console.print("-" * 40)
-    console.print("  Pending migrations: [dim]None[/dim]")
-    console.print("  Runtime is up to date.")
-
-    # Validator Test Coverage
-    console.print(f"\n[bold]Validator Test Coverage[/bold]")
-    console.print("-" * 40)
-    console.print("  Required threshold: [bold green]≥90%[/bold green]")
-    console.print("  Current coverage: [bold green]91%[/bold green] (on cli/validate.py)")
+    from .migrate import get_applied_migrations, get_pending_migrations, load_migrations
+    applied = get_applied_migrations(sync_path)
+    pending = [
+        m for m in get_pending_migrations(runtime_version or "0.0.0", None, load_migrations())
+        if m.get("to_version") not in applied
+    ]
+    if pending:
+        console.print(f"  Pending migrations: [bold yellow]{len(pending)}[/bold yellow]")
+    else:
+        console.print("  Pending migrations: [dim]None[/dim]")
+        console.print("  Runtime is up to date.")
 
     # Run validate and report summary
     console.print(f"\n[bold]Validation Summary[/bold]")

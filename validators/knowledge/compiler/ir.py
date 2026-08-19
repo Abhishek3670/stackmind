@@ -6,10 +6,14 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from validators.knowledge.analysis.base import AnalysisEvidence
+
 ResolutionTier = Literal["RESOLVED", "EXTERNAL", "UNRESOLVED"]
 
 IR_SCHEMA_VERSION = "1"
 COMPILER_VERSION = "frontend-1"
+RELATION_CALLS = "CALLS"
+RELATION_FLOWS_TO = "FLOWS_TO"
 
 
 @dataclass(frozen=True)
@@ -50,10 +54,19 @@ class EdgeIR:
     confidence: float
     path: str
     line: int
+    evidence: list[AnalysisEvidence] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        evidence = [
+            item if isinstance(item, AnalysisEvidence) else AnalysisEvidence.from_dict(item)
+            for item in self.evidence
+        ]
+        object.__setattr__(self, "evidence", evidence)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "confidence": self.confidence,
+            "evidence": [item.to_dict() for item in self.evidence],
             "line": self.line,
             "path": self.path,
             "relation": self.relation,

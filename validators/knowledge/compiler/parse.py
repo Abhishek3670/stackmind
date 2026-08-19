@@ -12,12 +12,6 @@ import copy
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
-
-try:  # pragma: no cover - exercised only when the optional dependency is present.
-    import libcst as cst  # type: ignore
-except ImportError:  # pragma: no cover - deterministic AST fallback is tested.
-    cst = None
 
 
 @dataclass(frozen=True)
@@ -83,13 +77,10 @@ class ParsedFile:
 def discover_python_files(root: Path) -> list[Path]:
     """Return project Python files in deterministic order."""
     excluded = {".git", ".sync", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "venv", ".venv", "env", ".env", "node_modules", ".tox", "site-packages", ".pytest-tmp"}
-    files: list[Path] = []
-    import os
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in excluded]
-        for filename in filenames:
-            if filename.endswith(".py"):
-                files.append(Path(dirpath) / filename)
+    files = [
+        p for p in root.rglob("*.py")
+        if not any(part in excluded for part in p.relative_to(root).parts)
+    ]
     return sorted(files, key=lambda item: _rel_path(root, item))
 
 
@@ -117,22 +108,6 @@ def parse_file(path: Path, root: Path) -> ParsedFile:
                 )
             ],
         )
-
-    if cst is not None:
-        try:
-            cst.parse_module(source)
-        except Exception as exc:
-            return ParsedFile(
-                path=rel_path,
-                module_name=module_name,
-                diagnostics=[
-                    ParsedDiagnostic(
-                        path=rel_path,
-                        code="PARSE_ERROR",
-                        message=str(exc),
-                    )
-                ],
-            )
 
     try:
         tree = ast.parse(source, filename=rel_path)
