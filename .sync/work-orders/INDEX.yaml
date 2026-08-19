@@ -413,8 +413,34 @@ orders:
       paths:
         - "docs/archive/"
       description: "Archived legacy plan documents"
-next_id: 38
-total_active: 2
+  - id: "WO-038"
+    type: CHORE
+    title: "GitOps Repository Maintenance — Tags, Version Alignment, Branch Cleanup"
+    status: ACTIVE
+    priority: P1
+    assigned_agents: ["local-llm"]
+    dependencies: []
+    deliverable:
+      type: "chore"
+      paths:
+        - "pyproject.toml"
+        - ".sync/runtime/TREE.yaml"
+      description: "Version alignment, v2.0.0 tag, and branch cleanup"
+  - id: "WO-039"
+    type: CHORE
+    title: "Document Consolidation & Root Directory Cleanup"
+    status: ACTIVE
+    priority: P2
+    assigned_agents: ["local-llm"]
+    dependencies: []
+    deliverable:
+      type: "chore"
+      paths:
+        - "docs/archive/"
+        - "docs/architecture.md"
+      description: "Consolidated documentation and clean root directory"
+next_id: 40
+total_active: 4
 total_completed: 35
 total_blocked: 0
 

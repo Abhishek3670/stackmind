@@ -39,11 +39,13 @@ agents:
   local-llm:
     assigned_work_orders:
     - WO-037
+    - WO-038
+    - WO-039
     blockers: []
     boot_version: v1.0
     last_task: Session ended via shutdown
-    next_task: Commit POC work + implement WO-037 (archive legacy plans)
-    session_count: 1
+    next_task: Execute WO-039 (document consolidation and root cleanup)
+    session_count: 2
     status: idle
 compliance:
   codex: COMPLIANT
@@ -58,8 +60,8 @@ inbox_unread:
   codex: 3
   gemini: 0
   gemma: 0
-  local-llm: 3
-last_updated: '2026-08-19T10:45:52.706569+00:00'
+  local-llm: 1
+last_updated: '2026-08-19T12:18:36.647062+00:00'
 latest_decision: D-004
 latest_decision_title: "Gemma Contract Hardening \u2014 Dependency Manifest Gate +\
   \ Secret-Scan Gate (Q1+Q2)"
@@ -74,6 +76,6 @@ schema_version: 1
 tree_version: 14
 work_orders:
   index_file: work-orders/INDEX.yaml
-  total_active: 2
+  total_active: 4
   total_blocked: 0
   total_completed: 35
