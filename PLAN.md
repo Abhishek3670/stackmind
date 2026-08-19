@@ -21,9 +21,9 @@ To support multi-language environments without rewriting parsers and Hybrid LSPs
 
 ## 0. Prerequisites (Critical Sequencing)
 
-**This plan is BLOCKED until PLANv4 Phase 1.7 is complete.**
+**This plan is BLOCKED until docs/archive/PLANv4.md Phase 1.7 is complete.**
 
-Phase 1.7 covers the scope-violation end-to-end test and D025 code enforcement (specifically addressing Risk 1: Transactional Safety and Split-Brain scenarios defined in `PLANv4.md`). Adding multi-language surface area before the Dual-Repo governance layer's open gaps are closed means every new language inherits those transactional vulnerabilities. We must close those holes first so that every new language inherits a governance layer that is complete and transactionally safe across both repositories.
+Phase 1.7 covers the scope-violation end-to-end test and D025 code enforcement (specifically addressing Risk 1: Transactional Safety and Split-Brain scenarios defined in `docs/archive/PLANv4.md`). Adding multi-language surface area before the Dual-Repo governance layer's open gaps are closed means every new language inherits those transactional vulnerabilities. We must close those holes first so that every new language inherits a governance layer that is complete and transactionally safe across both repositories.
 
 ---
 
@@ -72,7 +72,7 @@ If the determinism check in Phase 1 fails (CBM cannot give byte-identical output
 
 ## Immediate Next Actions
 
-0. **Prerequisite**: Complete PLANv4 Phase 1.7 (scope-violation E2E test and D025 enforcement) to seal the governance layer.
+0. **Prerequisite**: Complete docs/archive/PLANv4.md Phase 1.7 (scope-violation E2E test and D025 enforcement) to seal the governance layer.
 1. **Phase 1 (Prove Dependency)**: Run determinism, license, schema, and supply-chain checks on `codebase-memory-mcp`.
 2. **Phase 2 (TreeSitterFrontend)**: Build the Python adapter for the CBM binary.
 3. **Phase 3 (Packaging)**: Implement lazy installation logic.
