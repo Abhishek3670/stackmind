@@ -44,7 +44,7 @@ agents:
     blockers: []
     boot_version: v1.0
     last_task: Session ended via shutdown
-    next_task: "Commit code cleanups (DEFAULT_EXCLUDED_DIRS consolidation)"
+    next_task: Commit code cleanups (DEFAULT_EXCLUDED_DIRS consolidation)
     session_count: 2
     status: idle
 compliance:
@@ -61,7 +61,7 @@ inbox_unread:
   gemini: 0
   gemma: 0
   local-llm: 1
-last_updated: '2026-08-19T12:57:00.000000+00:00'
+last_updated: '2026-08-19T13:00:35.220370+00:00'
 latest_decision: D-004
 latest_decision_title: "Gemma Contract Hardening \u2014 Dependency Manifest Gate +\
   \ Secret-Scan Gate (Q1+Q2)"
