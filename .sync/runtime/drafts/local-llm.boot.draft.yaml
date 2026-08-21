@@ -1,0 +1,17 @@
+agent: local-llm
+assigned_work_orders: []
+blockers: []
+current_phase: ACTIVE
+dependencies: []
+graph_commit: null
+graph_version: null
+last_completed_task: Committed WO-036 changes; validated WO-038 and WO-039 already complete
+last_seen_decision: null
+last_updated: '2026-08-22T02:40:00.000000+00:00'
+next_action: Await next assignment.
+phase_status: ACTIVE
+session_count: 5
+sync_root: W:/Aatish/Stuff/stackmind/.sync
+tree_version: 14
+unread_inbox_count: 0
+workspace_root: W:/Aatish/Stuff/stackmind

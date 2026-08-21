@@ -1,0 +1,25 @@
+schema_version: 1
+agent: codex
+role: "Backend Developer"
+session_count: 14
+current_phase: "ACTIVE"
+phase_status: "ACTIVE"
+release: "2.1.0-dev"
+last_completed_task: "WO-036 Scope-Violation E2E Test & D025 Code Enforcement implemented and submitted for review"
+next_action: "Await Gemma review on WO-036."
+blockers: []
+assigned_work_orders:
+  - "WO-036"
+dependencies: []
+unread_inbox_count: 0
+last_seen_decision: "D-004"
+tree_version: 14
+graph_version: null
+notes:
+  - "Draft only. Canonical snapshot publication is owned by Claude."
+  - "WO-036 Scope-Violation E2E Test & D025 Code Enforcement implemented and tested."
+  - "D025 Destructive Operations Gate created at validators/harness/d025_gate.py."
+  - "Harness runner integrated with D025 checks and observability logging."
+  - "Full test suite passing with 390 tests and 87% coverage."
+last_updated: "2026-08-22T01:49:00+05:30"
+updated_by: "codex"
