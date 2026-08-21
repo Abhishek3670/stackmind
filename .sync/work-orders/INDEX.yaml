@@ -390,57 +390,95 @@ orders:
   - id: "WO-036"
     type: FEATURE
     title: "PLANv4 Phase 1.7 — Scope-Violation E2E Test & D025 Code Enforcement"
-    status: ACTIVE
+    status: COMPLETED
     priority: P0
     assigned_agents: ["codex"]
     dependencies: []
     deliverable:
       type: "module"
-      paths:
-        - "tests/test_scope_violation_e2e.py"
-        - "validators/harness/d025_gate.py"
-        - "validators/harness/runner.py"
+      path: "validators/harness/d025_gate.py"
       description: "Scope-violation E2E test and D025 destructive operation gate for harness runner"
   - id: "WO-037"
-    type: CHORE
+    type: FIX
     title: "Archive Legacy Plan Documents to docs/archive/"
-    status: ACTIVE
+    status: COMPLETED
     priority: P2
     assigned_agents: ["local-llm"]
     dependencies: []
     deliverable:
-      type: "chore"
-      paths:
-        - "docs/archive/"
+      type: "doc"
+      path: "docs/archive/"
       description: "Archived legacy plan documents"
   - id: "WO-038"
-    type: CHORE
+    type: FIX
     title: "GitOps Repository Maintenance — Tags, Version Alignment, Branch Cleanup"
     status: ACTIVE
     priority: P1
     assigned_agents: ["local-llm"]
     dependencies: []
     deliverable:
-      type: "chore"
-      paths:
-        - "pyproject.toml"
-        - ".sync/runtime/TREE.yaml"
+      type: "config"
+      path: "pyproject.toml"
       description: "Version alignment, v2.0.0 tag, and branch cleanup"
   - id: "WO-039"
-    type: CHORE
+    type: FIX
     title: "Document Consolidation & Root Directory Cleanup"
     status: ACTIVE
     priority: P2
     assigned_agents: ["local-llm"]
     dependencies: []
     deliverable:
-      type: "chore"
-      paths:
-        - "docs/archive/"
-        - "docs/architecture.md"
+      type: "doc"
+      path: "docs/archive/"
       description: "Consolidated documentation and clean root directory"
-next_id: 40
-total_active: 4
-total_completed: 35
-total_blocked: 0
+  - id: "WO-040"
+    type: RESEARCH
+    title: "PLANv3 Phase 1 — Prove the CBM Dependency (License, Determinism, Schema, Provenance)"
+    status: ACTIVE
+    priority: P1
+    assigned_agents: ["codex", "gemma"]
+    dependencies: ["WO-036"]
+    deliverable:
+      type: "doc"
+      path: "docs/cbm-evaluation-report.md"
+      description: "CBM dependency evaluation report (license, determinism, schema, supply-chain)"
+  - id: "WO-041"
+    type: FEATURE
+    title: "PLANv3 Phase 2 — CbmCompiler Adapter (Multi-Language AST -> Birth Key -> IR)"
+    status: BLOCKED
+    priority: P1
+    assigned_agents: ["codex"]
+    dependencies: ["WO-040"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/cbm.py"
+      description: "CbmCompiler multi-language adapter frontend"
+  - id: "WO-042"
+    type: FEATURE
+    title: "PLANv3 Phase 3 — Lazy Packaging & Detection Gate"
+    status: BLOCKED
+    priority: P2
+    assigned_agents: ["codex"]
+    dependencies: ["WO-041"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/lazy_cbm.py"
+      description: "Lazy binary detection and installation prompt gate"
+  - id: "WO-043"
+    type: FEATURE
+    title: "PLANv3 Phase 4 — Determinism Fallback & Advisory Mode Flagging (Conditional)"
+    status: BLOCKED
+    priority: P2
+    assigned_agents: ["codex"]
+    dependencies: ["WO-040"]
+    deliverable:
+      type: "module"
+      path: "validators/knowledge/compiler/advisory.py"
+      description: "Advisory mode tagging and determinism fallback handler"
+next_id: 44
+total_active: 3
+total_completed: 37
+total_blocked: 3
+
+
 

@@ -118,11 +118,11 @@ def verify_post_execution(
             
     # 4. Check D025 Destructive Operations in commands
     if hasattr(decision, "commands") and decision.commands:
-        destructive_keywords = ["rm ", "git reset", "git push", "git filter-repo", "git filter-branch", "docker rm", "docker rmi", "del "]
-        for cmd in decision.commands:
-            lower_cmd = cmd.lower()
-            if any(kw in lower_cmd for kw in destructive_keywords):
-                raise ContractAccessDenied(
-                    f"Command '{cmd}' triggered D025 Destructive Operations Safeguard. "
-                    "Backup, verify, and CEO escalation required."
-                )
+        from validators.harness.d025_gate import D025Gate, D025ViolationError
+        gate = D025Gate()
+        gate_decision = gate.evaluate_sequence(decision.commands)
+        gate.log_decision(project_path, agent, gate_decision, task_id=getattr(task, "identifier", None))
+        if not gate_decision.passed:
+            raise D025ViolationError(
+                f"Command sequence triggered D025 Destructive Operations Safeguard: {gate_decision.reason}"
+            )
