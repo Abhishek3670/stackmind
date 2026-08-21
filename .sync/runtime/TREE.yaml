@@ -61,7 +61,7 @@ inbox_unread:
   gemini: 0
   gemma: 0
   local-llm: 3
-last_updated: '2026-08-21T21:02:03.078498+00:00'
+last_updated: '2026-08-21T21:11:08.584287+00:00'
 latest_decision: D-004
 latest_decision_title: "Gemma Contract Hardening \u2014 Dependency Manifest Gate +\
   \ Secret-Scan Gate (Q1+Q2)"
