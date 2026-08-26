@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from validators.knowledge.api import _estimate_tokens
 from validators.knowledge.enricher import EmbeddingRequest, EmbeddingResponse
 
 
@@ -43,5 +44,3 @@ def _first_vector(encoded: Any) -> tuple[float, ...]:
     return tuple(float(item) for item in first)
 
 
-def _estimate_tokens(text: str) -> int:
-    return max(1, (len(text) + 3) // 4)

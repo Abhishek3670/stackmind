@@ -443,9 +443,7 @@ def _patch_ai_block(
 
 
 def _without_ai(node: dict[str, Any]) -> dict[str, Any]:
-    clone = deepcopy(node)
-    clone['ai'] = {}
-    return clone
+    return {k: v for k, v in node.items() if k != 'ai'}
 
 
 def _source_excerpt(project_path: Path, node: dict[str, Any]) -> str:

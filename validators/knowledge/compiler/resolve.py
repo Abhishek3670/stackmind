@@ -29,6 +29,32 @@ from .dead_code_compiler import augment_parsed_files as augment_dead_code_files
 from .health_compiler import augment_parsed_files as augment_health_files
 from .impact_compiler import augment_parsed_files as augment_impact_files
 
+ALL_AUGMENTERS = (
+    augment_pydantic_files,
+    augment_fastapi_files,
+    augment_sqlalchemy_files,
+    augment_django_files,
+    augment_celery_files,
+    augment_alembic_files,
+    augment_doc_files,
+    augment_config_files,
+    augment_cicd_files,
+    augment_test_files,
+    augment_cycle_files,
+    augment_dead_code_files,
+    augment_health_files,
+    augment_impact_files,
+)
+
+
+def run_all_augmenters(parsed_files: list[ParsedFile], project_path: Path | None = None) -> None:
+    """Run all 14 domain compiler augmenters on parsed files."""
+    for augment in ALL_AUGMENTERS:
+        try:
+            augment(parsed_files, project_path=project_path)
+        except TypeError:
+            augment(parsed_files)
+
 
 def compile_project(
     project_path: Path,
@@ -44,20 +70,7 @@ def compile_project(
     """
     project_path = project_path.resolve()
     parsed_files = parse_project(project_path)
-    augment_pydantic_files(parsed_files)
-    augment_fastapi_files(parsed_files)
-    augment_sqlalchemy_files(parsed_files)
-    augment_django_files(parsed_files)
-    augment_celery_files(parsed_files)
-    augment_alembic_files(parsed_files)
-    augment_doc_files(parsed_files, project_path=project_path)
-    augment_config_files(parsed_files, project_path=project_path)
-    augment_cicd_files(parsed_files, project_path=project_path)
-    augment_test_files(parsed_files, project_path=project_path)
-    augment_cycle_files(parsed_files, project_path=project_path)
-    augment_dead_code_files(parsed_files, project_path=project_path)
-    augment_health_files(parsed_files, project_path=project_path)
-    augment_impact_files(parsed_files, project_path=project_path)
+    run_all_augmenters(parsed_files, project_path=project_path)
 
     sync_dir = project_path / ".sync"
     external_project = not (sync_dir / "runtime").exists()

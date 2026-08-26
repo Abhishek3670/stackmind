@@ -22,9 +22,13 @@ console = Console()
 CLI_VERSION = __version__.replace("-alpha", "").replace("-beta", "")
 
 
+import re
+
+
 def _parse_version(version_str: str) -> tuple[int, int, int]:
-    parts = version_str.split("-")[0].split("+")[0].split(".")
-    return (int(parts[0]), int(parts[1]), int(parts[2]))
+    digits = [int(n) for n in re.findall(r"\d+", version_str)]
+    digits.extend([0] * max(0, 3 - len(digits)))
+    return (digits[0], digits[1], digits[2])
 
 
 def _check_compatibility(runtime_version: str, cli_version: str) -> str:
