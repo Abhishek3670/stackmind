@@ -394,3 +394,13 @@ class TestMatchMinimalExample:
         assert set(example.keys()) <= set(generated.keys()), (
             f"Missing keys: {set(example.keys()) - set(generated.keys())}"
         )
+
+class TestGitIsolation:
+    """Verify .sync is properly ignored and not tracked by project git repo."""
+
+    def test_init_renders_gitignore(self, tmp_project):
+        init(tmp_project, name="Test", no_git=True)
+        gi = tmp_project / ".gitignore"
+        assert gi.exists()
+        content = gi.read_text(encoding="utf-8")
+        assert ".sync/" in content

@@ -348,6 +348,30 @@ def validate_structure(project_path: Path, sync_path: Path, agents: list[str], r
             path=".git",
         ))
 
+    # Check if .sync is accidentally tracked in the main project git repository
+    if (project_path / ".git").exists():
+        try:
+            completed = subprocess.run(
+                ["git", "ls-files", ".sync"],
+                cwd=str(project_path),
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            if completed.stdout.strip():
+                result.issues.append(Issue(
+                    layer="Structure",
+                    severity=Severity.WARN,
+                    message=(
+                        ".sync/ directory is tracked in the main project Git repository index. "
+                        "Run 'git rm -r --cached .sync' to untrack it."
+                    ),
+                    path=".sync",
+                    auto_fixable=True,
+                ))
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+            pass
+
 
 # ─── Layer 3: Protocol Compliance ───────────────────────────────
 
@@ -1349,6 +1373,16 @@ def auto_fix(sync_path: Path, issues: list[Issue]) -> int:
                 except Exception:
                     pass
             fixed += 1
+
+        elif ".sync/ directory is tracked in the main project Git repository index" in issue.message:
+            project_path = sync_path.parent
+            if (project_path / ".git").exists():
+                try:
+                    subprocess.run(["git", "rm", "-r", "--cached", ".sync"], cwd=str(project_path), capture_output=True, check=False)
+                    subprocess.run(["git", "commit", "-m", "chore: untrack .sync from main git repo (validate --fix)"], cwd=str(project_path), capture_output=True, check=False)
+                    fixed += 1
+                except Exception:
+                    pass
 
     return fixed
 

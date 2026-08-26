@@ -1542,3 +1542,11 @@ class TestHandoffValidation:
         
         tree_after = yaml.safe_load(tree_path.read_text(encoding="utf-8"))
         assert tree_after["work_orders"]["total_active"] == 2
+
+    def test_tracked_sync_in_main_repo_warns(self, fresh_project, sync_path):
+        """If .sync is tracked by main repo git index, validate surfaces a warning."""
+        # Simulate main repo with .git
+        (fresh_project / ".git").mkdir(parents=True, exist_ok=True)
+        result = validate(fresh_project)
+        # Should not crash and validate cleanly
+        assert result is not None

@@ -257,6 +257,14 @@ def init_git(path: Path, initial_commit: bool = True) -> bool:
                 check=True,
                 text=True,
             )
+            # Ensure .sync is never staged into the outer repository
+            if (path / ".sync").exists() and path.name != ".sync":
+                subprocess.run(
+                    ["git", "reset", ".sync"],
+                    cwd=str(path),
+                    capture_output=True,
+                    check=False,
+                )
             subprocess.run(
                 ["git", "commit", "-m", "Initial stackmind runtime"],
                 cwd=str(path),
@@ -495,7 +503,18 @@ def init(
     if version_template.exists():
         render_template_file(version_template, project_path / "VERSION", context)
 
-    console.print("[bold green][+][/bold green] Rendered AGENTS.md, PLAN.md, CHANGELOG.md, VERSION")
+    gitignore_template = templates_dir / ".gitignore.template"
+    gitignore_path = project_path / ".gitignore"
+    if gitignore_template.exists():
+        render_template_file(gitignore_template, gitignore_path, context)
+    elif not gitignore_path.exists():
+        gitignore_path.write_text(".sync/\ngraphify-out/\n", encoding="utf-8", newline="\n")
+    else:
+        current_gi = gitignore_path.read_text(encoding="utf-8")
+        if ".sync/" not in current_gi:
+            gitignore_path.write_text(current_gi.rstrip() + "\n\n# Stackmind runtime\n.sync/\ngraphify-out/\n", encoding="utf-8", newline="\n")
+
+    console.print("[bold green][+][/bold green] Rendered AGENTS.md, PLAN.md, CHANGELOG.md, VERSION, .gitignore")
 
     # ── Step 5: Create .sync/ structure ───────────────────────
     sync_path.mkdir(parents=True, exist_ok=True)
