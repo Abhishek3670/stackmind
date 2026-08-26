@@ -38,7 +38,7 @@ StackMind is also an operating system for teams of AI agents working on a shared
 
 ### Standalone Knowledge Graph (Zero Config)
 
-Point StackMind at any codebase — no configuration required:
+Point StackMind at any Python project — no configuration required:
 
 ```bash
 # 1. Compile entire project into deterministic knowledge store
