@@ -181,7 +181,7 @@ def archive_handoff(handoff_path: Path, outbox_path: Path) -> None:
 
 
 def update_tree_status(sync_path: Path, agent: str) -> bool:
-    """Update agent status to idle in TREE.yaml."""
+    """Update agent status to idle in TREE.yaml and sync work-order totals."""
     tree_path = sync_path / "runtime" / "TREE.yaml"
     if not tree_path.exists():
         return False
@@ -197,6 +197,15 @@ def update_tree_status(sync_path: Path, agent: str) -> bool:
     data["agents"][agent]["last_task"] = "Session ended via shutdown"
     data["agents"][agent]["blockers"] = []
     data["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+    # Sync canonical work order totals from INDEX.yaml to prevent drift
+    index_path = sync_path / "work-orders" / "INDEX.yaml"
+    if index_path.exists():
+        index_data = _load_yaml(index_path)
+        if index_data and isinstance(data.get("work_orders"), dict):
+            for field in ("total_active", "total_blocked", "total_completed"):
+                if field in index_data:
+                    data["work_orders"][field] = index_data[field]
     
     _save_yaml(tree_path, data)
     return True
@@ -309,6 +318,18 @@ def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = 
         return False
 
     if handoff:
+        # Pre-flight handoff protocol validation (GEMINI-02, LOCAL-LLM-01)
+        if not force:
+            from .validate import ValidationResult, _validate_handoff_file
+            val_res = ValidationResult()
+            _validate_handoff_file(handoff, agent, val_res, sync_path)
+            if val_res.errors:
+                console.print(f"[bold red][x] Handoff validation failed for '{handoff.name}':[/bold red]")
+                for err in val_res.errors:
+                    console.print(f"[dim]  - {err.message}[/dim]")
+                console.print("\n[yellow]Fix handoff report issues before shutdown (or use --force).[/yellow]")
+                _write_error_receipt(handoff)
+                return False
         console.print(f"[green][+] Handoff report found: {handoff.name}[/green]")
     elif force:
         console.print("[yellow][!] Forcing shutdown without handoff report[/yellow]")
@@ -400,6 +421,25 @@ def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = 
         released, _ = release_lock(sync_path, agent, force=force)
         if released and current_lock is not None:
             console.print(f"[green][+] Released write lock[/green]")
+
+    # Auto-commit .sync governance receipts and state changes if .sync is a git repository
+    if (sync_path / ".git").exists():
+        try:
+            subprocess.run(
+                ["git", "add", "."],
+                cwd=str(sync_path),
+                capture_output=True,
+                check=False,
+            )
+            commit_msg = f"chore(governance): agent {agent} session {session_id} shutdown"
+            subprocess.run(
+                ["git", "commit", "-m", commit_msg],
+                cwd=str(sync_path),
+                capture_output=True,
+                check=False,
+            )
+        except Exception:
+            pass
 
     console.print(f"\n[bold green]Agent '{agent}' shutdown complete.[/bold green]")
     return True

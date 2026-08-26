@@ -14,7 +14,7 @@ agents:
     - WO-040
     blockers: []
     boot_version: v1.0
-    last_task: Implemented WO-036 (scope-violation E2E test + D025 gate)
+    last_task: Session ended via shutdown
     next_task: 'Execute WO-040 (Phase 1: Prove CBM Dependency - License, Determinism,
       Schema, Supply-Chain)'
     session_count: 14
@@ -32,7 +32,7 @@ agents:
     - WO-040
     blockers: []
     boot_version: v1.0
-    last_task: Approved WO-036 (all quality gates passed)
+    last_task: Session ended via shutdown
     next_task: Collaborate on / Review WO-040 evaluation
     session_count: 18
     status: idle
@@ -61,7 +61,7 @@ inbox_unread:
   gemini: 0
   gemma: 0
   local-llm: 3
-last_updated: '2026-08-21T21:11:08.584287+00:00'
+last_updated: '2026-08-21T21:32:49.540514+00:00'
 latest_decision: D-004
 latest_decision_title: "Gemma Contract Hardening \u2014 Dependency Manifest Gate +\
   \ Secret-Scan Gate (Q1+Q2)"

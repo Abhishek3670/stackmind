@@ -352,3 +352,40 @@ class TestUnprocessedInboxGate:
         self._add_handoff(sync_path, "claude")
         # No top-level inbox items.
         assert shutdown(fresh_project, "claude", force=False) is True
+
+    def test_shutdown_validates_handoff_preflight(self, fresh_project, sync_path):
+        """Malformed handoff report should fail shutdown unless forced."""
+        outbox = sync_path / "outbox" / "claude"
+        handoff = outbox / "handoff-2026-05-24T12-00-00.md"
+        handoff.write_text(
+            "📋 MY NEXT TASKS (when I resume):\n"
+            "- WO-001 - finish tasks without source\n",
+            encoding="utf-8"
+        )
+        # Shutdown without force should fail
+        assert shutdown(fresh_project, "claude", force=False) is False
+        assert handoff.exists()
+        
+        # Shutdown with force should succeed
+        assert shutdown(fresh_project, "claude", force=True) is True
+
+    def test_shutdown_syncs_work_order_totals(self, fresh_project, sync_path):
+        """Shutdown should automatically sync TREE.yaml work_orders totals from INDEX.yaml."""
+        tree_path = sync_path / "runtime" / "TREE.yaml"
+        index_path = sync_path / "work-orders" / "INDEX.yaml"
+        
+        tree_data = yaml.safe_load(tree_path.read_text(encoding="utf-8"))
+        index_data = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+        
+        tree_data["work_orders"]["total_completed"] = 10
+        index_data["total_completed"] = 25
+        tree_path.write_text(yaml.dump(tree_data), encoding="utf-8")
+        index_path.write_text(yaml.dump(index_data), encoding="utf-8")
+        
+        outbox = sync_path / "outbox" / "claude"
+        handoff = outbox / "handoff-2026-05-24T12-00-00.md"
+        handoff.write_text("# Clean handoff", encoding="utf-8")
+        
+        assert shutdown(fresh_project, "claude", force=False) is True
+        tree_after = yaml.safe_load(tree_path.read_text(encoding="utf-8"))
+        assert tree_after["work_orders"]["total_completed"] == 25

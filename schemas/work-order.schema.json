@@ -397,6 +397,43 @@
     "blocked_by_rework": {
       "type": "boolean",
       "default": false
+    },
+    "contract_ref": {
+      "type": "string"
+    },
+    "context": {
+      "type": [
+        "object",
+        "string",
+        "array"
+      ]
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "deliverables": {
+      "type": [
+        "array",
+        "object"
+      ]
+    },
+    "instructions": {
+      "type": [
+        "array",
+        "string"
+      ]
+    },
+    "milestone": {
+      "type": [
+        "string",
+        "object"
+      ]
+    },
+    "qa_by": {
+      "type": "string"
+    },
+    "qa_verdict": {
+      "type": "string"
     }
   },
   "additionalProperties": false

@@ -1502,3 +1502,43 @@ class TestHandoffValidation:
         issues = [i for i in result.issues if "LOCAL-LLM-01" in i.message]
         assert len(issues) == 1
         assert issues[0].severity == Severity.ERROR
+
+    def test_archived_read_handoffs_ignored(self, sync_path):
+        """Historical handoffs in _read/ should not trigger retroactive validation errors."""
+        read_dir = sync_path / "outbox" / "claude" / "_read"
+        read_dir.mkdir(parents=True, exist_ok=True)
+        old_handoff = read_dir / "handoff-2026-01-01T00-00-00Z.md"
+        old_handoff.write_text(
+            "📋 MY NEXT TASKS (when I resume):\n"
+            "- WO-001 - finish tasks without source\n",
+            encoding="utf-8"
+        )
+        result = ValidationResult()
+        validate_protocol(sync_path, ["claude"], result)
+        issues = [i for i in result.issues if "GEMINI-02" in i.message]
+        assert len(issues) == 0
+
+    def test_canonical_drift_autofix(self, fresh_project, sync_path):
+        """validate --fix should automatically fix canonical drift between TREE and INDEX."""
+        tree_path = sync_path / "runtime" / "TREE.yaml"
+        index_path = sync_path / "work-orders" / "INDEX.yaml"
+        
+        tree_data = yaml.safe_load(tree_path.read_text(encoding="utf-8"))
+        index_data = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+        
+        # Introduce drift
+        tree_data["work_orders"]["total_active"] = 99
+        index_data["total_active"] = 2
+        tree_path.write_text(yaml.dump(tree_data), encoding="utf-8")
+        index_path.write_text(yaml.dump(index_data), encoding="utf-8")
+        
+        # Validation without fix catches the error
+        res_no_fix = validate(fresh_project, fix=False)
+        assert any("Canonical drift" in i.message for i in res_no_fix.errors)
+        
+        # Validation with fix resolves it
+        res_with_fix = validate(fresh_project, fix=True)
+        assert not any("Canonical drift" in i.message for i in res_with_fix.errors)
+        
+        tree_after = yaml.safe_load(tree_path.read_text(encoding="utf-8"))
+        assert tree_after["work_orders"]["total_active"] == 2
