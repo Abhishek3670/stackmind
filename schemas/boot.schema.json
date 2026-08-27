@@ -33,6 +33,8 @@
         "PLANNING",
         "ACTIVE",
         "COMPLETE",
+        "DONE",
+        "SHIPPED",
         "BLOCKED"
       ]
     },

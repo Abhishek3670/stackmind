@@ -60,6 +60,106 @@
         "type": "string"
       }
     },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "affected_services": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "api_changes": {
+      "type": "boolean"
+    },
+    "db_migration": {
+      "type": "boolean"
+    },
+    "frontend_changes": {
+      "type": "boolean"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "completion": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "release": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "commit": {
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "released_by": {
+              "type": "string"
+            },
+            "released_date": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "released": {
+      "type": "boolean"
+    },
+    "release_tag": {
+      "type": "string"
+    },
+    "release_commit": {
+      "type": "string"
+    },
+    "blocked_reason": {
+      "type": "string"
+    },
+    "reproduction_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "root_cause": {
+      "type": "string"
+    },
+    "fix_verified": {
+      "type": "boolean"
+    },
+    "phase_number": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "quality_gates": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "deliverable": {
       "type": "object",
       "required": [
@@ -72,7 +172,8 @@
           "enum": [
             "code",
             "doc",
-            "config"
+            "config",
+            "module"
           ]
         },
         "path": {
@@ -120,6 +221,12 @@
         }
       ]
     },
+    "unblocked": {
+      "type": "string"
+    },
+    "unblocked_reason": {
+      "type": "string"
+    },
     "description": {
       "type": "string"
     },
@@ -127,6 +234,47 @@
       "type": "array",
       "items": {
         "type": "string"
+      }
+    },
+    "files_created": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "gate_conditions": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "condition": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "condition",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        ]
       }
     },
     "milestones": {
@@ -209,7 +357,31 @@
     "log": {
       "type": "array",
       "items": {
-        "type": "string"
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "date",
+              "agent",
+              "action"
+            ],
+            "additionalProperties": false
+          }
+        ]
       }
     },
     "rework_budget": {

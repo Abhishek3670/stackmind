@@ -45,6 +45,19 @@ def sync_path(fresh_project):
     return fresh_project / ".sync"
 
 
+def _write_work_order_file(sync_path, state, work_order_id, data):
+    path = sync_path / "work-orders" / state / f"{work_order_id}.yaml"
+    path.write_text(yaml.dump(data), encoding="utf-8")
+    return path
+
+
+def _append_index_order(sync_path, order):
+    index = sync_path / "work-orders" / "INDEX.yaml"
+    index_data = yaml.safe_load(index.read_text(encoding="utf-8"))
+    index_data["orders"].append(order)
+    index.write_text(yaml.dump(index_data), encoding="utf-8")
+
+
 # ─── Integration Tests: Full Validate ─────────────────────────
 
 
@@ -140,6 +153,85 @@ class TestSchemaValidation:
         result = ValidationResult()
         validate_schema(sync_path, result)
         assert any("session_count" in i.message for i in result.issues)
+
+    def test_work_order_with_extended_fields_passes_schema(self, sync_path):
+        work_order = {
+            "id": "WO-011",
+            "type": "FEATURE",
+            "title": "Completed feature",
+            "status": "COMPLETED",
+            "priority": "P1",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "plan_ref": "PLAN.md",
+            "created": "2026-07-19",
+            "updated": "2026-07-19",
+            "description": "Schema fixture",
+            "acceptance_criteria": ["Works"],
+            "affected_services": ["cli/validate.py"],
+            "api_changes": False,
+            "db_migration": False,
+            "frontend_changes": False,
+            "deliverable": {
+                "type": "module",
+                "path": "cli/validate.py",
+                "description": "Validation logic",
+            },
+            "references": ["docs/example.md"],
+            "files_created": ["tests/test_validate.py"],
+            "notes": ["done"],
+            "log": [
+                {
+                    "date": "2026-07-19",
+                    "agent": "codex",
+                    "action": "Completed work",
+                }
+            ],
+        }
+        _write_work_order_file(sync_path, "COMPLETED", "WO-011", work_order)
+
+        result = ValidationResult()
+        validate_schema(sync_path, result)
+        wo_issues = [i for i in result.issues if i.path.endswith("WO-011.yaml")]
+        assert len(wo_issues) == 0
+
+    def test_work_order_missing_required_field_errors(self, sync_path):
+        work_order = {
+            "id": "WO-012",
+            "type": "FEATURE",
+            "status": "ACTIVE",
+            "priority": "P1",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+        }
+        _write_work_order_file(sync_path, "ACTIVE", "WO-012", work_order)
+
+        result = ValidationResult()
+        validate_schema(sync_path, result)
+        assert any(
+            i.path.endswith("WO-012.yaml") and "title" in i.message
+            for i in result.issues
+        )
+
+    def test_work_order_unknown_field_errors(self, sync_path):
+        work_order = {
+            "id": "WO-013",
+            "type": "FEATURE",
+            "title": "Unexpected field",
+            "status": "ACTIVE",
+            "priority": "P1",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "unexpected": True,
+        }
+        _write_work_order_file(sync_path, "ACTIVE", "WO-013", work_order)
+
+        result = ValidationResult()
+        validate_schema(sync_path, result)
+        assert any(
+            i.path.endswith("WO-013.yaml") and "unexpected" in i.message
+            for i in result.issues
+        )
 
 
 # ─── Layer Tests: Structure ───────────────────────────────────
@@ -597,6 +689,98 @@ class TestWorkOrderDeliverableValidation:
 
 
 # ─── Rework Budget Tests ──────────────────────────────────────────
+
+
+class TestWorkOrderStateDirectoryValidation:
+    """Tests for WO-009 state-directory consistency checks."""
+
+    def _base_index_order(self, work_order_id, status):
+        return {
+            "id": work_order_id,
+            "type": "FEATURE",
+            "title": f"Work order {work_order_id}",
+            "status": status,
+            "priority": "P1",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "created": "2026-07-19",
+            "updated": "2026-07-19",
+            "deliverable": {
+                "type": "module",
+                "path": "cli/validate.py",
+                "description": "Validation logic",
+            },
+        }
+
+    def _base_work_order_file(self, work_order_id, status):
+        return {
+            "id": work_order_id,
+            "type": "FEATURE",
+            "title": f"Work order {work_order_id}",
+            "status": status,
+            "priority": "P1",
+            "assigned_agents": ["codex"],
+            "dependencies": [],
+            "deliverable": {
+                "type": "module",
+                "path": "cli/validate.py",
+                "description": "Validation logic",
+            },
+        }
+
+    def test_duplicate_work_order_id_across_directories_errors(self, fresh_project, sync_path):
+        _append_index_order(sync_path, self._base_index_order("WO-021", "ACTIVE"))
+        _write_work_order_file(
+            sync_path,
+            "ACTIVE",
+            "WO-021",
+            self._base_work_order_file("WO-021", "ACTIVE"),
+        )
+        _write_work_order_file(
+            sync_path,
+            "COMPLETED",
+            "WO-021",
+            self._base_work_order_file("WO-021", "COMPLETED"),
+        )
+
+        result = validate(fresh_project)
+        duplicate_issues = [
+            i for i in result.issues if "multiple state directories" in i.message
+        ]
+        assert len(duplicate_issues) == 1
+        assert "WO-021" in duplicate_issues[0].message
+
+    def test_completed_directory_requires_completed_status(self, fresh_project, sync_path):
+        _append_index_order(sync_path, self._base_index_order("WO-022", "COMPLETED"))
+        _write_work_order_file(
+            sync_path,
+            "COMPLETED",
+            "WO-022",
+            self._base_work_order_file("WO-022", "ACTIVE"),
+        )
+
+        result = validate(fresh_project)
+        assert any(
+            i.path.endswith("WO-022.yaml")
+            and "directory 'COMPLETED' requires COMPLETE, COMPLETED" in i.message
+            for i in result.issues
+        )
+
+    def test_index_status_mismatch_errors(self, fresh_project, sync_path):
+        _append_index_order(sync_path, self._base_index_order("WO-023", "BLOCKED"))
+        _write_work_order_file(
+            sync_path,
+            "ACTIVE",
+            "WO-023",
+            self._base_work_order_file("WO-023", "ACTIVE"),
+        )
+
+        result = validate(fresh_project)
+        assert any(
+            i.path.endswith("WO-023.yaml")
+            and "does not match INDEX.yaml status 'BLOCKED'" in i.message
+            for i in result.issues
+        )
 
 
 class TestReworkBudget:

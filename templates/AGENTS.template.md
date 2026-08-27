@@ -1,6 +1,6 @@
 # AGENTS.md
-Version: v1.1
-Runtime: D021 + D022 + D023.x + D024 + D025 + D031
+Version: v3.0
+Runtime: D021 + D022 + D023.x + D024 + D025 + D031 + KNOW-01 + HARNESS-01 + CONTRACT-01
 Authority: CEO → Claude → Gemma → Workers
 Project: {{PROJECT_NAME}}
 
@@ -46,7 +46,17 @@ Never scan all work orders.
 
 7. Read only unseen decision deltas.
 
-8. Read PLAN.md only if assigned work requires product context.
+8. Read PLAN.md (and PLANv3.md) only if assigned work requires product context.
+
+9. Read your assigned Contract. (CONTRACT-01)
+
+At the start of every session, you must read the contract assigned to your work order in `.sync/contracts/<WO-ID>.yaml`. This contract defines your identity, allowed scope, and budget.
+
+10. Query Knowledge API for task context (KNOW-01).
+
+Use `stackmind graph context` or `stackmind graph query` to understand
+the codebase relevant to assigned work. Do NOT scan source files manually
+when the knowledge store is available. **All queries are structurally checked against your contract.**
 
 ---
 
@@ -77,14 +87,6 @@ requires ALL of the following before execution:**
 
 5. **Cleanup** — Remove backup only after push/verification succeeds
 
-**Destructive commands include (not exhaustive):**
-- `git filter-repo`, `git filter-branch`
-- `git reset --hard`, `git push --force`
-- `git clean -fd`, `git checkout -- .`
-- `rm -rf`, `del /s`, bulk file deletion
-- `docker system prune`, `docker rmi` (production images)
-- Any command with `--force` flag on shared state
-
 **Violation of D025 is a CRITICAL protocol breach.**
 
 ---
@@ -107,61 +109,45 @@ Agents must NEVER:
 - treat a broken local test environment as non-blocking (GEMINI-01)
 - bypass the advisory lock by performing manual writes to canonical files; all canonical changes must go through the CLI (PLAT-03)
 - forcibly acquire a lock (using `--force`) unless the previous holder is confirmed stuck or dead (PLAT-03)
+- manually edit `.sync/knowledge/` files — it is compiler output; run `graph build` or `graph update` to refresh (KNOW-01)
+- scan source files for symbol lookup when the Knowledge API is available and the graph is not stale (KNOW-01)
+- bypass the harness verification gate — invalid output must never persist silently (HARNESS-01)
+- **operate outside of your Contract's scope boundary** — attempting to modify or query files/subgraphs explicitly denied or not allowed by your contract will be rejected by the API.
+- **Architects MUST NEVER write or edit application source code.** (All implementation MUST be delegated to workers).
+- **Workers MUST NEVER generate or modify Contract YAML files.**
 
 ---
 
-# Authority Model
+# Authority Model & The Contract Layer (v3.0)
 
 CEO:
 - product scope
 - priorities
 - releases
 
-Claude:
+Claude (Architect):
 - architecture
 - planning
 - work orders
 - dependency resolution
 - runtime normalization
+- **Repository State Check**: On boot, Claude MUST query the Knowledge Graph (e.g., using `stackmind graph stats` or `stackmind graph context`) to analyze the current state of the repository before making any plans or processing new requests.
+- **Contract generation**: Claude MUST generate a formal YAML contract in `.sync/contracts/WO-xxx.yaml` for every work order delegated to a worker. 
+- **NO IMPLEMENTATION**: Claude is strictly forbidden from writing or editing any application source code. Claude only writes Work Orders and Contracts, then assigns them to Codex. If tasked to build a feature, Claude MUST delegate it.
 
-Gemma:
+Gemma (QA):
 - quality gates
 - approvals
 - blocks
+- Reviews diffs against the Contract scope boundary before approval.
 
-Workers:
+Workers (Codex, Gemini):
 - implementation only
-
----
-
-# Worker Rules
-
-Workers may:
-
-- execute assigned work
-- write code
-- write tests
-- write reports
-- write draft snapshots
-- send escalation messages
-
-Workers may NOT:
-
-- publish canonical snapshots
-- publish TREE updates
-- change work order states
-- self-assign work orders (GEMINI-02)
-
-Workers propose.
-Claude commits.
+- Must strictly operate within the `allow` scope of their assigned Contract.
 
 ---
 
 # Behavioral Contract Rules
-
-The following contract rules are derived from flaw analysis (PLAN-v1.md) and are
-binding on all agents. Violations are protocol breaches subject to D023.2
-compliance enforcement.
 
 | Contract ID | Rule | Enforced In |
 |-------------|------|-------------|
@@ -172,104 +158,20 @@ compliance enforcement.
 | GEMMA-03 | Quality metrics require commit SHA, branch, tested_at; unverifiable → flag | Handoff §Quality Metrics |
 | CLAUDE-02 | "Messages to Dispatch" → "Messages written this session (pending read by recipient)"; unread_inbox_count required | Handoff §Messages |
 | CLAUDE-03 | Session numbering must be cardinal (`session_completed: N`, `next_session_id: N+1`) | Handoff header/footer |
+| **CONTRACT-01** | All workers are bound by a stateful YAML contract defining Identity, Task, Scope, and Budget. Out-of-scope queries/edits will fail closed at the Knowledge API level. | Knowledge API, Harness |
 
-## PLAT-03: CLI-Only Writes & Lock Enforcement
+## CONTRACT-01: Agent Governance & The Contract Layer
 
-To ensure lock ordering guarantees are real and not bypassed:
-1. All agents MUST perform mutations to canonical files (`runtime/boot/`, `TREE.yaml`) ONLY via validated CLI operations (e.g. `stackmind promote`). Direct manual modifications to these files are prohibited.
-2. Agents MUST NOT forcibly steal the write lock (`--force`) unless there is explicit approval or confirmation that the current holder is stuck/non-responsive. Any forced lock acquisition logs a `LOCK_STOLEN` compliance event that will be flagged in system health validation.
+Every agent session starts with a **Contract**, not just a prompt. 
+A contract is a structured, inspectable artifact that defines:
+- **Identity**: Which agent, role, and WO.
+- **Scope**: Graph-level boundary of allowed nodes/subgraphs (e.g. `billing.invoices` + depth 2) and explicit denials.
+- **Budget**: Token, time, and max files touched budgets.
+- **Task**: The specific WO assignment.
 
-## GEMINI-01: Broken Local Test Environment = BLOCKED
+When Claude delegates a task, Claude MUST write this contract to `.sync/contracts/<WO-ID>.yaml`. 
 
-A broken local test environment MUST be classified as BLOCKED with a formal
-BUGFIX work order. Agents must not continue shipping implementation changes
-without local test verification. CI-only verification (when local tests are
-unavailable) requires an explicit Decision entry from the architect role
-documenting the temporary exception. **"Doesn't block the build" is not a
-sufficient standard.**
-
-## GEMINI-02: Workers MUST NOT Self-Assign Work Orders
-
-Workers MUST NOT self-assign WOs. "My Next Tasks" in handoff reports must
-only list currently assigned WOs or explicit inbox directives. If a WO is
-referenced, the assignment source must be cited:
-
-```
-- WO-056 (assigned by Claude, inbox message 2026-06-18)
-```
-
-Planning or assuming future WO assignment without formal authorization is a
-protocol violation.
-
-## LOCAL-LLM-01: Delegated vs Initiated Actions in Handoffs
-
-Handoffs MUST distinguish delegated actions from initiated actions. Delegated
-actions must cite the source directive. Delegated entries require a
-`delegating_agent` field:
-
-```
-✅ COMPLETED THIS SESSION (session_completed: 30):
-- Executed commit of Claude's canonical state normalization
-  delegating_agent: claude
-  source_directive: inbox/claude/2026-06-10_claude_normalize.md
-→ Committed: runtime/boot/claude.boot.yaml, runtime/TREE.yaml
-→ Commit SHA: ed9d856
-```
-
-Summarizing another agent's work as your own without attribution breaks the
-audit trail and is a protocol violation.
-
-## GEMMA-03: Quality Metrics Must Reference a Commit
-
-Quality metrics in handoff reports MUST include `commit` SHA, `branch`, and
-`tested_at` timestamp:
-
-```yaml
-quality_metrics:
-  commit: dd35298
-  branch: main
-  tested_at: "2026-06-18T14:30:00+05:30"
-  backend_coverage: "81.21%"
-  frontend_coverage: "86.57%"
-  total_tests: 247
-  status: GREEN
-```
-
-Metrics that cannot be tied to a specific commit MUST be flagged as
-`unverified`:
-
-```yaml
-quality_metrics:
-  commit: unverified
-  branch: unverified
-  tested_at: unverified
-```
-
-## CLAUDE-02: Messages Section Renamed
-
-"Messages to Dispatch" is renamed to **"Messages written this session (pending
-read by recipient)"**. This clarifies that the message exists on disk but the
-receiving agent has not yet acknowledged it. The handoff must record the
-`unread_inbox_count` from TREE.yaml as confirmation of what is pending:
-
-```
-📨 MESSAGES WRITTEN THIS SESSION (PENDING READ BY RECIPIENT):
-- → [Agent]: [message content]
-  unread_inbox_count from TREE.yaml: [N]
-```
-
-## CLAUDE-03: Session Numbering Standardized to Cardinal Form
-
-Session numbering in handoff reports MUST use cardinal form:
-
-```
-session_completed: 30
-next_session_id: 31
-```
-
-Ordinal phrasing (e.g., "29→30") is prohibited in formal handoff reports — it
-implies a transition and creates ambiguity about which session's work the
-report covers.
+Worker agents MUST NOT try to bypass the contract. The Knowledge API structurally enforces the contract (Fail closed, not open). A budget overrun ends the session.
 
 ---
 
@@ -277,20 +179,22 @@ report covers.
 
 When a worker finishes an assigned work order:
 
-1. Write code + tests
+1. Write code + tests (Must be within Contract scope)
 2. Send review request to gemma inbox:
 
 .sync/inbox/gemma/<date>_<agent>_<wo-id>-review.md
 
 Include: WO ID, modified files, summary of changes.
 
-3. Send completion notice to claude inbox:
+3. DO NOT send a completion notice directly to Claude. You must wait for Gemma's QA review.
 
-.sync/inbox/claude/<date>_<agent>_<wo-id>-complete.md
+# QA & Approval Protocol (Gemma)
 
-4. Do NOT mark WO as complete (Claude commits state changes)
-
-Skipping step 2 is a protocol violation.
+When Gemma receives a review request:
+1. Run tests (`pytest`) and validation (`stackmind validate .`).
+2. If tests FAIL: Write a `NEEDS_CHANGES` verdict back to the worker's inbox with the error logs.
+3. If tests PASS: Write an `APPROVED` verdict to Claude's inbox (`.sync/inbox/claude/<date>_gemma_<wo-id>-verdict.md`) so Claude knows it is safe to route for commit.
+4. Do NOT mark WO as complete (Claude commits state changes and closes WOs).
 
 ---
 
@@ -300,41 +204,92 @@ Before ending session:
 
 1. Write work output
 2. Write tests
-3. Write session report
-4. Write draft snapshot:
+3. Run `stackmind graph update -p .` if source files were modified (KNOW-01)
+4. Write session report
+5. Write draft snapshot:
 
 .sync/runtime/drafts/<agent>.boot.draft.yaml
 
-5. Write handoffs
-6. Commit work
-7. Record `unread_inbox_count` from TREE.yaml in handoff (CLAUDE-02)
-8. Use cardinal session numbering (`session_completed: N`, `next_session_id: N+1`) (CLAUDE-03)
-9. For delegated actions, include `delegating_agent` field in completed items (LOCAL-LLM-01)
-10. For quality metrics, include `commit`, `branch`, `tested_at`; flag unverifiable (GEMMA-03)
-11. Flag any broken local test env as BLOCKED with open BUGFIX WO (GEMINI-01)
-
-No silent exits.
+6. Write handoffs
+7. Commit work
+8. Record `unread_inbox_count` from TREE.yaml in handoff
+9. Use cardinal session numbering
+10. For delegated actions, include `delegating_agent` field in completed items
+11. For quality metrics, include `commit`, `branch`, `tested_at`; flag unverifiable
+12. Flag any broken local test env as BLOCKED with open BUGFIX WO
+13. **Run `stackmind shutdown <agent>`** — This is the MANDATORY final step.
 
 ---
 
-# Escalation Rules
+# Knowledge API Protocol (KNOW-01)
 
-Escalate to Claude if:
+All agents MUST prefer the Knowledge API over manual file scanning. The API provides compiled, indexed, provenance-tracked results in milliseconds and **enforces the Contract Layer**.
 
-- dependency blocked
-- ambiguity exists
-- API contract changes
-- architecture mismatch
+## When to Use the Knowledge API
 
-Escalate to CEO if:
+| Task | Command | Instead Of |
+|------|---------|-----------|
+| Find a symbol | `stackmind graph query "name"` | `grep -r "name" .` |
+| Find callers | `stackmind graph callers "symbol"` | reading all files for references |
+| Impact of a change | `stackmind graph impact "symbol"` | guessing what breaks |
+| Understand a subsystem | `stackmind graph context "question"` | reading 10+ files |
+| Check graph health | `stackmind graph stats` | manual file counting |
 
-- scope changes
-- deadline changes
-- budget decisions
+## NEW IN v3.0: Governance Queries
+Agents can inspect their own or others' contracts and debug scope denials:
+- `stackmind graph contract show WO-142`
+- `stackmind graph contract validate WO-142 --op "edit billing/invoices.py"`
+- `stackmind graph explain-denial WO-142 --node auth.session`
+- `stackmind graph scope agent-codex-07`
 
-Never guess.
+## Agent Context Assembly
 
-Escalate.
+When preparing context for LLM prompts or understanding a work order:
+
+```bash
+stackmind graph context "<work order description>" --token-budget 2000 -p .
+```
+
+This returns a bounded, ranked, revision-stamped bundle, **strictly filtered by the agent's active Contract scope.** If a request falls outside the `allow` scope or inside a `deny` scope, it is rejected entirely.
+
+## After Code Changes
+
+Workers MUST update the knowledge store after modifying source:
+
+```bash
+stackmind graph update -p .
+```
+
+---
+
+# Harness Runtime Protocol (HARNESS-01)
+
+The Harness Runtime provides governed agent execution.
+
+## Harness Execution Model
+
+```
+stackmind harness run-once
+```
+
+The harness:
+1. Polls inbox and assigned work orders
+2. **Validates active Contract**
+3. Assembles context via Knowledge API (`assemble_context` — contract checked)
+4. Sends context + task to LLM
+5. Validates LLM output against `harness-output.schema.json`
+6. Runs `stackmind validate` on staged changes **against the Contract scope boundary**
+7. Writes back only if validation passes
+8. Reports via observability (tokens, latency, cost)
+
+## Rules
+
+1. **Harness operates at Worker level** — It cannot modify canonical state,
+   promote snapshots, or change work order status. Same authority as Codex/Gemini.
+2. **Verification before write-back** — Every write passes through schema
+   validation + `stackmind validate`. No exceptions.
+3. **Observable** — Every harness run produces structured events.
+4. **Fail-safe** — On any error, the harness defers and creates a blocker.
 
 ---
 
@@ -346,7 +301,7 @@ Escalate.
 | Codex | Backend Lead | 0 | Idle |
 | Gemini | Frontend Lead | 0 | Idle |
 | Gemma | QA Lead | 0 | Idle |
-| Local-LLM | GitOps Lead | 0 | Idle |
+| Local-LLM | GitOps & Release Lead | 0 | Idle |
 
 ---
 

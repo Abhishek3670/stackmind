@@ -18,14 +18,7 @@ def get_migrations_dir() -> Path:
     return Path(__file__).parent.parent / "migrations"
 
 
-def _parse_version(version: str) -> tuple[int, int, int]:
-    """Parse version string to tuple for comparison."""
-    parts = version.split(".")
-    return (int(parts[0]), int(parts[1]), int(parts[2]))
-
-
 def _load_yaml(path: Path) -> dict | None:
-    """Load YAML file, return None on error."""
     try:
         return yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception:
@@ -33,8 +26,13 @@ def _load_yaml(path: Path) -> dict | None:
 
 
 def _save_yaml(path: Path, data: dict) -> None:
-    """Save data to YAML file."""
     path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+
+
+def _parse_version(version: str) -> tuple[int, int, int]:
+    """Parse version string to tuple for comparison."""
+    parts = version.split("-")[0].split("+")[0].split(".")
+    return (int(parts[0]), int(parts[1]), int(parts[2]))
 
 
 def get_current_version(sync_path: Path) -> str | None:

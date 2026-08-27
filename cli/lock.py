@@ -46,7 +46,7 @@ def read_lock(sync_path: Path) -> dict | None:
         return None
     try:
         data = yaml.safe_load(lock_path.read_text(encoding="utf-8"))
-    except yaml.YAMLError:
+    except (yaml.YAMLError, OSError):
         return None
     if not isinstance(data, dict) or "held_by" not in data:
         return None
@@ -162,7 +162,7 @@ def release_lock(sync_path: Path, agent: str, force: bool = False) -> tuple[bool
             f"LOCK held by '{holder}', not '{agent}'. Use --force to override.",
         )
 
-    lock_path.unlink()
+    lock_path.unlink(missing_ok=True)
     if holder != agent:
         return True, f"LOCK forcibly released (was held by '{holder}')"
     return True, f"LOCK released by '{agent}'"

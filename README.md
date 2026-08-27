@@ -1,290 +1,268 @@
-# stackmind
+# StackMind
 
-> Reusable Multi-Agent Engineering Runtime Platform
+> **Know your codebase before you touch it.**
 
-**Version:** 1.2.0  
-**Status:** Production Ready
+StackMind compiles your Python source into a persistent, queryable knowledge graph. Ask "who calls this function?", "what breaks if I rename it?", or "give me context for this task" — and get instant answers without scanning files.
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## Overview
+## Why?
 
-stackmind is a reusable runtime platform for multi-agent software engineering teams. It provides:
+Every time an AI agent (or a developer) opens a project, they rebuild their understanding from scratch — reading files, grepping, guessing. StackMind compiles that understanding once and makes it queryable forever.
 
-- **Structured agent coordination** via inbox/outbox messaging with `_read/` deduplication
-- **Work order management** with deliverable tracking and atomicity enforcement
-- **Boot snapshots** for session continuity across context limits
-- **Protocol enforcement** for consistent agent behavior
-- **Schema validation** for runtime integrity
-- **Migration system** for seamless version upgrades
-- **Shutdown validation** to prevent lost work across sessions
-
-## Installation
-
-```bash
-pip install stackmind
 ```
+Before: grep -r "my_function" . | read 20 files | guess what breaks
+After:  stackmind graph callers "my_function"  →  instant answer
+```
+
+---
 
 ## Quick Start
 
 ```bash
-# Initialize a new project with stackmind runtime
+# Install
+pip install stackmind
+
+# Point it at any Python project
+stackmind graph build -p /path/to/your/project
+
+# Query — no file scanning required
+stackmind graph query "my_function" -p /path/to/your/project
+stackmind graph callers "my_function" -p /path/to/your/project
+stackmind graph impact "my_function" --depth 3 -p /path/to/your/project
+```
+
+That's it. No config, no init, no setup. Works on any Python project.
+
+---
+
+## What Can It Do?
+
+### Find symbols instantly
+
+```bash
+$ stackmind graph query "echo" -p ./click
+results: 1
+- Function echo [FUNC-...] src/click/utils.py confidence=1.0
+```
+
+### Who calls this?
+
+```bash
+$ stackmind graph callers "echo" -p ./click
+results: 18
+- Method Command.invoke src/click/core.py
+- Function secho src/click/termui.py
+- Method ClickException.show src/click/exceptions.py
+- ...
+```
+
+### What breaks if I change it?
+
+```bash
+$ stackmind graph impact "echo" --depth 3 -p ./click
+results: 29
+- Method Command.invoke → Command.__call__ → ...
+- Function confirm → prompt → prompt_func → ...
+```
+
+### Assemble context for an LLM prompt
+
+```bash
+$ stackmind graph context "How does Click handle routing?" --token-budget 2000 -p ./click
+token_budget: 2000
+estimated_tokens: 155
+truncated: False
+[Method] Path.__init__ ...
+[Class] CliRunner ...
+```
+
+Returns a bounded, ranked bundle with provenance — ready to paste into an agent prompt.
+
+### Framework Intelligence Compilers (Phase 1)
+
+StackMind includes specialized AST compilers that statically map Python web & data frameworks:
+
+- ⚡ **Pydantic**: Model definitions, field constraints, type validation graphs
+- 🚀 **FastAPI**: Endpoint routes, path params, auth dependencies, middleware mapping
+- 🗄️ **SQLAlchemy**: ORM models, foreign keys, 1-to-N relationships, schema graphs
+- 🎯 **Django**: URL routing, views, models, `@receiver` signals, middleware
+- ⚡ **Celery**: Asynchronous tasks, queues, periodic beat schedules, `.delay()`/`.apply_async()` invocation flows
+- 📜 **Alembic**: Migration DAG history, schema operations (`op.create_table`), point-in-time schema reconstruction (`--at <rev>`)
+
+---
+
+## Commands
+
+| Command | What It Does |
+|---------|-------------|
+| `graph build -p .` | Compile entire project into knowledge store |
+| `graph update -p .` | Incremental update (only changed files) |
+| `graph query "name"` | Find symbols by name, kind, or path |
+| `graph callers "symbol"` | Direct callers of a symbol |
+| `graph impact "symbol"` | Transitive impact analysis |
+| `graph context "question"` | Assemble bounded context for LLM prompts |
+| `graph explain "symbol"` | Show callers + callees of a symbol |
+| `graph stats` | Node/edge/revision counts |
+| `graph watch` | File watcher — auto-recompile on save |
+| **Framework Intelligence** | |
+| `graph models` | List Pydantic models & validation schemas |
+| `graph routes` | List FastAPI routes & endpoints |
+| `graph auth` | List FastAPI auth dependencies |
+| `graph middleware` | List FastAPI middleware registrations |
+| `graph schema` | Show SQLAlchemy schema graph or Alembic state (`--at <rev>`) |
+| `graph relations` | Show SQLAlchemy ORM model relationships |
+| `graph django-urls` | List Django URL patterns & routing |
+| `graph django-signals` | List Django signal handlers & sender wiring |
+| `graph tasks` | List Celery tasks & periodic beat schedules |
+| `graph task-flow` | Map caller code to asynchronous task execution |
+| `graph migrations` | List Alembic migration history DAG sequentially |
+
+---
+
+## How It Works
+
+```
+Source (.py files)
+    │
+    ▼
+┌────────────────────┐
+│  LibCST Parser     │  Full-fidelity AST
+└────────────────────┘
+    │
+    ▼
+┌────────────────────┐
+│  Jedi Resolver     │  Cross-file symbol resolution
+└────────────────────┘
+    │
+    ▼
+┌────────────────────┐
+│  Deterministic IR  │  Byte-identical across runs
+└────────────────────┘
+    │
+    ▼
+┌────────────────────┐
+│  Storage Layer     │  Sharded JSON, atomic writes
+└────────────────────┘
+    │
+    ▼
+┌────────────────────┐
+│  Projections       │  Reverse index, search, metrics
+└────────────────────┘
+    │
+    ▼
+┌────────────────────┐
+│  Knowledge API     │  Query, callers, impact, context
+└────────────────────┘
+```
+
+**Key properties:**
+- **Deterministic** — same source → byte-identical output. No RNG, no timestamps, no absolute paths.
+- **Incremental** — change one file → only affected symbols recompile.
+- **Rename-safe** — NodeIDs survive renames/moves via alias detection.
+- **Crash-safe** — atomic writes (temp + `os.replace()`). Never half-written.
+
+---
+
+## Multi-Agent Runtime (Advanced)
+
+StackMind also includes a full multi-agent coordination runtime for teams of AI agents:
+
+```bash
+# Initialize a governed project
 stackmind init ./my-project --name "My Project"
 
 # Validate runtime health
 stackmind validate ./my-project
 
-# Check runtime status
-stackmind doctor ./my-project
-
-# Migrate to latest version
-stackmind migrate ./my-project
-
-# Shutdown an agent session (requires handoff report)
-stackmind shutdown claude
+# Run governed agent execution
+stackmind harness run-once codex -p .
 ```
 
-## CLI Commands
+Features:
+- Agent messaging (inbox/outbox)
+- Work order management (ACTIVE → BLOCKED → COMPLETED)
+- Boot snapshots (session continuity)
+- Write locks (no clobbered state)
+- 5-layer validation
+- Governed execution with verification gates
 
-| Command | Description |
-|---------|-------------|
-| `stackmind init` | Initialize a new runtime |
-| `stackmind validate` | Validate runtime health (4-layer validation) |
-| `stackmind doctor` | Check runtime status and compatibility |
-| `stackmind migrate` | Apply pending migrations |
-| `stackmind shutdown` | Shutdown agent with handoff + inbox-drain validation |
-| `stackmind promote` | Promote a worker draft snapshot to canonical (validation-gated) |
-| `stackmind lock` | Manage the runtime write lock (`acquire`/`release`/`status`) |
+See [STACKMIND.md](STACKMIND.md) for full architecture documentation.
+See [AGENTS.md](AGENTS.md) for agent protocols and authority model.
 
-### Validate Options
+---
+
+## Installation
+
+### From source
 
 ```bash
-stackmind validate ./my-project        # Full validation
-stackmind validate --fix               # Auto-fix minor issues
-```
-
-### Migrate Options
-
-```bash
-stackmind migrate                      # Apply pending migrations
-stackmind migrate --check              # Preview pending migrations
-stackmind migrate --rollback           # Undo last migration
-stackmind migrate --to 1.1.0           # Migrate to specific version
-```
-
-### Shutdown Options
-
-```bash
-stackmind shutdown claude              # Shutdown with handoff + inbox-drain validation
-stackmind shutdown codex --force       # Force shutdown (not recommended)
-stackmind shutdown gemini --defer      # Defer unprocessed inbox items to _deferred/
-```
-
-Shutdown enforces a handoff report and a drained inbox (zero unprocessed
-items), persists a freshly re-read boot snapshot, and releases the agent's
-write lock. When unprocessed items are present, they can be safely deferred
-using `--defer` instead of bypassing verification with `--force`.
-
-### Promote Options
-
-```bash
-stackmind promote codex                # Validate draft → promote → validate canonical
-```
-
-Promotion is gated: the worker draft at `runtime/drafts/<agent>.boot.draft.yaml`
-is validated before promotion and the canonical `runtime/boot/<agent>.boot.yaml`
-is validated after. A `NORMALIZATION` decision is recorded on success; a blocker
-is written to Claude's inbox on failure.
-
-### Lock Options
-
-```bash
-stackmind lock acquire claude --session-id 31   # Acquire the write lock
-stackmind lock status                           # Show current lock holder
-stackmind lock release claude                   # Release the write lock
-```
-
-The write lock (`.sync/runtime/LOCK`) serializes canonical writes across agent
-sessions.
-
-## Generated Structure
-
-After `stackmind init`:
-
-```
-my-project/
-├── AGENTS.md              # Authoritative agent rules
-└── .sync/                 # Runtime instance
-    ├── RUNTIME_VERSION    # Version tracking
-    ├── MIGRATIONS.yaml    # Applied migrations log
-    ├── runtime/
-    │   ├── TREE.yaml      # Team state (with graph_version)
-    │   ├── LOCK           # Write lock (when held) — serializes canonical writes
-    │   ├── boot/          # Canonical agent snapshots (Claude-owned)
-    │   ├── drafts/        # Worker draft snapshots (promoted via `stackmind promote`)
-    │   └── receipts/      # Shutdown receipts
-    ├── work-orders/       # Task management
-    │   ├── INDEX.yaml     # Work order index
-    │   ├── ACTIVE/        # Active work orders
-    │   ├── BLOCKED/       # Blocked work orders
-    │   └── COMPLETED/     # Completed work orders
-    ├── inbox/             # Agent messages
-    │   ├── <agent>/       # Per-agent inbox
-    │   │   └── _read/     # Processed messages
-    │   └── CEO/           # CEO inbox
-    │       └── _read/     # Processed messages
-    ├── outbox/            # Agent reports & handoffs
-    ├── reviews/           # Code review history
-    └── decisions/         # Decision log (incl. auto NORMALIZATION entries)
-```
-
-> A `.sync-ref` file tracked in the **main** project repo records the
-> last-known-good `.sync` commit SHA, giving the main repo a verifiable anchor
-> into the git-ignored `.sync` repo (validated by `stackmind validate`).
-
-## Validation Layers
-
-stackmind validate runs 4 validation layers:
-
-1. **Schema Validation** — YAML syntax, JSON Schema compliance
-2. **Structure Validation** — Directory structure, required files
-3. **Protocol Compliance** — Authority model, blocked-agent validation, deliverable requirements, write-lock integrity, untracked `.sync` paths, review-file bundling (one review per WO), and completion-notice `release_target`
-4. **Boot Integrity** — Snapshot consistency, version alignment, graph_version checks, canonical drift (TREE vs INDEX), snapshot version lag, and `.sync-ref` anchoring
-
-### Runtime Integrity Enforcement
-
-These checks close the canonical-drift gaps where agents could pass their own
-boot checks while being silently wrong about shared state:
-
-- **Canonical drift** — `TREE.yaml` work-order totals must match `INDEX.yaml`
-  (the work-order ledger is the external ground truth).
-- **Snapshot version lag** — an agent snapshot lagging `TREE.yaml` by more than
-  3 versions is flagged (broken session continuity).
-- **Write lock** — `.sync/runtime/LOCK` serializes canonical writes; `validate`
-  flags a malformed lock or an unknown holder.
-- **Promotion gate** — `stackmind promote` validates a draft before and after
-  promotion and records a `NORMALIZATION` decision.
-- **`.sync-ref` anchoring** — the live `.sync` HEAD is checked against the SHA
-  tracked by the main repo.
-
-## Work Order Schema
-
-Work orders now require a `deliverable` field for actionable types:
-
-```yaml
-id: WO-001
-type: FEATURE          # FEATURE, BUGFIX, HOTFIX, REFACTOR, FIX require deliverable
-title: "Add user authentication"
-status: ACTIVE
-priority: P1
-assigned_agents: [codex]
-dependencies: []
-deliverable:
-  type: code           # code, doc, or config
-  path: src/auth/
-  description: "JWT-based authentication module"
-```
-
-Types that don't require deliverable: `PHASE`, `RESEARCH`, `AUDIT`, `VALIDATION`
-
-## Migration System
-
-Migrations are YAML manifests in `migrations/`:
-
-```yaml
-from_version: "1.0.0"
-to_version: "1.1.0"
-description: "Add graph_version and CEO inbox _read folder"
-
-up:
-  - action: add_field
-    file: runtime/TREE.yaml
-    field: graph_version
-    value: null
-  - action: add_dir
-    path: inbox/CEO/_read
-
-down:
-  - action: remove_dir
-    path: inbox/CEO/_read
-  - action: remove_field
-    file: runtime/TREE.yaml
-    field: graph_version
-```
-
-Supported actions: `add_field`, `remove_field`, `add_dir`, `remove_dir`, `rename`, `set_value`, `normalize_enum_field`, `restore_field`
-
-The `normalize_enum_field` action coerces a drifted free-form field value back
-into an allowed enum (preserving the original losslessly via `preserve_to`), and
-`restore_field` is its inverse for rollback. Both accept a `glob` to target many
-files (e.g. `runtime/boot/*.yaml`). These power the `1.1.0 → 1.2.0` migration,
-which normalizes legacy `phase_status` values such as
-`RELEASED_DEPLOYED_HEALTHY (...)` to the lifecycle enum while stashing the
-original text in `phase_status_detail`.
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    stackmind platform                       │
-├─────────────────────────────────────────────────────────────┤
-│  Runtime Engine (this package)  │  Runtime Instance (per-project)
-│  ───────────────────────────────────────────────────────────│
-│  • CLI tooling                  │  • Live agent state           │
-│  • Schema definitions           │  • Inbox/outbox history       │
-│  • Template files               │  • Work order history         │
-│  • Validation rules             │  • Decision log               │
-│  • Migration manifests          │  • Session reports            │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Authority Model
-
-```
-CEO (Top Manager)
-    ↓
-Claude (Senior Architect)
-    ↓
-Gemma (QA Lead)
-    ↓
-Workers (Codex, Gemini, Local-LLM)
-```
-
-## Protocol Compliance
-
-stackmind enforces:
-
-- **Agent boot/resume optimization** — Session continuity across context limits
-- **Work order architecture** — Deliverable tracking and atomicity enforcement
-- **Protocol integrity** — Hash-verified protocol documents prevent unauthorized changes
-- **Mandatory review handoff** — Agents must hand off work before shutdown
-- **Runtime versioning and migration** — Seamless upgrades via YAML manifests
-
-## Documentation
-
-- [Getting Started](docs/getting-started.md)
-- [Architecture](docs/architecture.md)
-- [Protocols](docs/protocols.md)
-- [CLI Reference](docs/cli-reference.md)
-- [Migration Guide](docs/migration-guide.md)
-
-## Development
-
-```bash
-# Clone repository
-git clone https://github.com/Abhishek3670/stackmind.git
+git clone https://github.com/stackmind/stackmind.git
 cd stackmind
-
-# Install in development mode
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Validate own runtime (self-hosting)
-stackmind validate .
+pip install -e .
 ```
+
+### Requirements
+
+- Python ≥ 3.10
+- Dependencies: `click`, `libcst`, `jedi`, `pyyaml`, `jsonschema`, `rich`
+
+---
+
+## Examples
+
+### Compile the Click framework
+
+```bash
+git clone --depth 1 https://github.com/pallets/click /tmp/click
+stackmind graph build -p /tmp/click
+
+# Result: 1925 nodes, 6300 edges, compiled in seconds
+```
+
+### Find all callers of a function
+
+```bash
+stackmind graph callers "echo" -p /tmp/click
+# 18 callers across 7 files — instant, no grep
+```
+
+### Prepare context for an AI agent
+
+```bash
+stackmind graph context "What would break if I rename echo?" --token-budget 1500 -p /tmp/click
+# Returns ranked symbols + call relationships within token budget
+```
+
+---
+
+## Project Structure
+
+```
+stackmind/
+├── cli/                    # CLI commands (Click)
+│   ├── main.py            # Entry point
+│   ├── graph.py           # Knowledge graph commands
+│   └── harness.py         # Agent runner
+├── validators/
+│   ├── knowledge/         # Knowledge Compiler
+│   │   ├── compiler/      # parse, resolve, ir, incremental, rename
+│   │   ├── projections/   # reverse_index, search, metrics
+│   │   ├── api.py         # Knowledge API
+│   │   ├── registry.py    # Symbol Registry
+│   │   ├── storage.py     # Node storage
+│   │   └── enricher.py    # Async LLM enrichment
+│   └── harness/           # Agent Runner
+├── schemas/               # JSON Schema definitions
+├── tests/                 # 304 tests
+└── docs/                  # Architecture & RFCs
+```
+
+---
 
 ## License
 
-MIT License
+MIT — [Abhishek Sharma](https://github.com/stackmind)

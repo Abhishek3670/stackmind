@@ -31,7 +31,7 @@ DEFAULT_AGENTS = ["claude", "codex", "gemini", "gemma", "local-llm"]
 PLACEHOLDER_PATTERN = re.compile(r"\{\{(\w+)\}\}")
 
 # Runtime version for fresh installs
-RUNTIME_VERSION = "1.0.0"
+RUNTIME_VERSION = "3.0.0"
 
 
 def get_templates_dir() -> Path:
@@ -371,19 +371,15 @@ def validate_result(project_path: Path, agents: list[str]) -> list[str]:
 
 
 def _detect_os() -> tuple[str, str]:
-    """Detect the current OS and shell type.
+    """Detect the current OS and shell type."""
+    import platform
 
-    Returns:
-        Tuple of (os_type, shell_type).
-    """
-    import sys
-
-    if sys.platform == "win32":
+    system = platform.system()
+    if system == "Windows":
         return "Windows 10/11", "PowerShell"
-    elif sys.platform == "darwin":
+    if system == "Darwin":
         return "macOS", "Bash/Zsh"
-    else:
-        return "Linux", "Bash"
+    return "Linux", "Bash"
 
 
 def init(
@@ -454,6 +450,11 @@ def init(
     now = datetime.now(timezone.utc).astimezone()
     init_timestamp = now.isoformat()
 
+    import sys
+    stackmind_bin = shutil.which("stackmind")
+    if not stackmind_bin:
+        stackmind_bin = f"{sys.executable} -m cli.main"
+
     context: dict[str, str] = {
         "PROJECT_NAME": name,
         "WORKSPACE_ROOT": str(project_path).replace("\\", "/"),
@@ -463,6 +464,7 @@ def init(
         "RUNTIME_VERSION": RUNTIME_VERSION,
         "OS_TYPE": os_type,
         "SHELL_TYPE": shell_type,
+        "STACKMIND_BIN_PATH": stackmind_bin.replace("\\", "/"),
     }
 
     # ── Step 4: Render AGENTS.md and README.md to project root ─
@@ -480,8 +482,20 @@ def init(
             project_path / "README.md",
             context,
         )
+        
+    plan_template = templates_dir / "PLAN.template.md"
+    if plan_template.exists():
+        render_template_file(plan_template, project_path / "PLAN.md", context)
+        
+    changelog_template = templates_dir / "CHANGELOG.template.md"
+    if changelog_template.exists():
+        render_template_file(changelog_template, project_path / "CHANGELOG.md", context)
+        
+    version_template = templates_dir / "VERSION.template"
+    if version_template.exists():
+        render_template_file(version_template, project_path / "VERSION", context)
 
-    console.print("[bold green][+][/bold green] Rendered AGENTS.md")
+    console.print("[bold green][+][/bold green] Rendered AGENTS.md, PLAN.md, CHANGELOG.md, VERSION")
 
     # ── Step 5: Create .sync/ structure ───────────────────────
     sync_path.mkdir(parents=True, exist_ok=True)

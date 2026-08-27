@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stackmind"
-version = "1.2.0"
-description = "Reusable Multi-Agent Engineering Runtime Platform"
+version = "2.1.0-dev"
+description = "Compiler-Backed Multi-Agent Engineering Runtime"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -30,6 +30,8 @@ classifiers = [
 ]
 dependencies = [
     "click>=8.0",
+    "jedi>=0.19",
+    "libcst>=1.4",
     "pyyaml>=6.0",
     "jsonschema>=4.0",
     "rich>=13.0",
@@ -62,4 +64,3 @@ select = ["E", "F", "I", "W"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --cov=cli --cov=validators"

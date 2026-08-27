@@ -27,6 +27,14 @@ def fresh_project(tmp_path):
     """Create a fresh valid stackmind project."""
     project = tmp_path / "test-project"
     init(project, name="Test Project", no_git=True)
+    
+    # Downgrade to 1.0.0 for migration tests
+    rv_path = project / ".sync" / "RUNTIME_VERSION"
+    if rv_path.exists():
+        data = yaml.safe_load(rv_path.read_text())
+        data["version"] = "1.0.0"
+        rv_path.write_text(yaml.dump(data))
+        
     return project
 
 

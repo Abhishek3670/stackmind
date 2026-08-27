@@ -5,8 +5,10 @@ Validates handoff report exists, updates state, and archives session.
 """
 
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+
 
 import yaml
 from rich.console import Console
@@ -15,7 +17,6 @@ console = Console()
 
 
 def _load_yaml(path: Path) -> dict | None:
-    """Load YAML file, return None on error."""
     try:
         return yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception:
@@ -23,8 +24,68 @@ def _load_yaml(path: Path) -> dict | None:
 
 
 def _save_yaml(path: Path, data: dict) -> None:
-    """Save data to YAML file."""
     path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+
+
+def _next_session_id(sync_path: Path, agent: str) -> int | None:
+    """Return the next session number for an agent, if its boot snapshot exists."""
+    boot_path = sync_path / "runtime" / "boot" / f"{agent}.boot.yaml"
+    data = _load_yaml(boot_path)
+    if not isinstance(data, dict):
+        return None
+    return data.get("session_count", 0) + 1
+
+
+def _git_head(project_path: Path) -> str | None:
+    """Return the repo HEAD SHA, or None if git metadata is unavailable."""
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(project_path),
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+    return completed.stdout.strip() or None
+
+
+def write_session_receipt(
+    sync_path: Path,
+    project_path: Path,
+    agent: str,
+    session_id: int | None,
+    outcome: str,
+    handoff_path: Path | None,
+) -> Path | None:
+    """Write a session-level shutdown receipt."""
+    if session_id is None:
+        return None
+
+    timestamp = datetime.now(timezone.utc)
+    receipt_timestamp = timestamp.strftime("%Y-%m-%dT%H%M%SZ")
+    tree_version, _ = fresh_tree_versions(sync_path)
+    receipts_dir = sync_path / "runtime" / "receipts"
+    receipts_dir.mkdir(parents=True, exist_ok=True)
+
+    receipt_data = {
+        "agent": agent,
+        "session_id": session_id,
+        "timestamp": timestamp.isoformat(),
+        "outcome": outcome,
+        "handoff_path": (
+            handoff_path.relative_to(sync_path).as_posix()
+            if handoff_path is not None
+            else None
+        ),
+        "commit_sha": _git_head(project_path),
+        "tree_version": tree_version,
+    }
+
+    receipt_path = receipts_dir / f"{agent}-session-{session_id}-{receipt_timestamp}.yaml"
+    _save_yaml(receipt_path, receipt_data)
+    return receipt_path
 
 
 def find_handoff_report(outbox_path: Path) -> Path | None:
@@ -224,6 +285,17 @@ def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = 
         return False
 
     outbox_path = sync_path / "outbox" / agent
+    session_id = _next_session_id(sync_path, agent)
+
+    def _write_error_receipt(handoff_path: Path | None = None) -> None:
+        write_session_receipt(
+            sync_path,
+            project_path,
+            agent,
+            session_id,
+            "error",
+            handoff_path,
+        )
     
     # Check for handoff report
     handoff = find_handoff_report(outbox_path)
@@ -233,10 +305,11 @@ def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = 
         console.print(f"[dim]Expected: {outbox_path}/handoff-<timestamp>.md[/dim]")
         console.print("\n[yellow]Create a handoff report before shutdown to prevent lost work.[/yellow]")
         console.print("[dim]Use --force to skip this check (not recommended).[/dim]")
+        _write_error_receipt()
         return False
 
     if handoff:
-        console.print(f"[green][✓] Handoff report found: {handoff.name}[/green]")
+        console.print(f"[green][+] Handoff report found: {handoff.name}[/green]")
     elif force:
         console.print("[yellow][!] Forcing shutdown without handoff report[/yellow]")
 
@@ -248,7 +321,7 @@ def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = 
         if defer:
             deferred_count = defer_inbox_items(sync_path, agent, pending)
             console.print(
-                f"[green][✓] Deferred {deferred_count} unprocessed inbox item(s)[/green]"
+                f"[green][+] Deferred {deferred_count} unprocessed inbox item(s)[/green]"
             )
         else:
             console.print(
@@ -262,6 +335,7 @@ def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = 
                 f"{agent}/_read/ with a documented outcome) before shutdown.[/yellow]"
             )
             console.print("[dim]Use --force or --defer to handle this.[/dim]")
+            _write_error_receipt(handoff)
             return False
     elif pending and force:
         console.print(
@@ -271,21 +345,36 @@ def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = 
 
     # Update TREE.yaml
     if update_tree_status(sync_path, agent):
-        console.print(f"[green][✓] Updated TREE.yaml: {agent} → idle[/green]")
+        console.print(f"[green][+] Updated TREE.yaml: {agent} -> idle[/green]")
     else:
         console.print(f"[bold red][x] Failed to update TREE.yaml[/bold red]")
+        _write_error_receipt(handoff)
         return False
 
     # Update boot snapshot
     if update_boot_snapshot(sync_path, agent):
-        console.print(f"[green][✓] Incremented session_count in boot snapshot[/green]")
+        console.print(f"[green][+] Incremented session_count in boot snapshot[/green]")
     else:
         console.print(f"[yellow][!] Could not update boot snapshot[/yellow]")
 
     # Archive handoff report
+    archived_handoff: Path | None = None
     if handoff:
         archive_handoff(handoff, outbox_path)
-        console.print(f"[green][✓] Archived handoff to _read/[/green]")
+        archived_handoff = outbox_path / "_read" / handoff.name
+        console.print(f"[green][+] Archived handoff to _read/[/green]")
+
+    session_outcome = "deferred" if pending and defer and not force else "clean"
+    receipt_path = write_session_receipt(
+        sync_path,
+        project_path,
+        agent,
+        session_id,
+        session_outcome,
+        archived_handoff or handoff,
+    )
+    if receipt_path is not None:
+        console.print(f"[green][+] Wrote session receipt: {receipt_path.name}[/green]")
 
     # Release the write lock (PLAT-03). Shutdown is the canonical mechanism
     # that clears the lock, enforcing serialized canonical writes across
@@ -310,7 +399,7 @@ def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = 
     else:
         released, _ = release_lock(sync_path, agent, force=force)
         if released and current_lock is not None:
-            console.print(f"[green][✓] Released write lock[/green]")
+            console.print(f"[green][+] Released write lock[/green]")
 
     console.print(f"\n[bold green]Agent '{agent}' shutdown complete.[/bold green]")
     return True

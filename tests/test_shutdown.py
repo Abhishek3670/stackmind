@@ -31,6 +31,10 @@ def sync_path(fresh_project):
     return fresh_project / ".sync"
 
 
+def _session_receipts(sync_path, agent):
+    return sorted((sync_path / "runtime" / "receipts").glob(f"{agent}-session-*.yaml"))
+
+
 class TestShutdownHelpers:
     """Tests for shutdown helper functions."""
 
@@ -96,16 +100,27 @@ class TestShutdownHelpers:
 class TestShutdownCommand:
     """Tests for the shutdown command."""
 
-    def test_shutdown_without_handoff_fails(self, fresh_project):
+    def test_shutdown_without_handoff_fails(self, fresh_project, sync_path):
         """Should fail when no handoff report exists."""
         result = shutdown(fresh_project, "claude", force=False)
         assert result is False
+        receipts = _session_receipts(sync_path, "claude")
+        assert len(receipts) == 1
+        receipt = yaml.safe_load(receipts[0].read_text())
+        assert receipt["outcome"] == "error"
+        assert receipt["handoff_path"] is None
 
     def test_shutdown_with_handoff_succeeds(self, fresh_project, sync_path):
         """Should succeed when handoff report exists."""
         outbox = sync_path / "outbox" / "claude"
         handoff = outbox / "handoff-2026-05-24T12-00-00.md"
         handoff.write_text("# Handoff Report\n\nSession complete.", encoding="utf-8")
+        session_id = (
+            yaml.safe_load((sync_path / "runtime" / "boot" / "claude.boot.yaml").read_text())[
+                "session_count"
+            ]
+            + 1
+        )
 
         result = shutdown(fresh_project, "claude", force=False)
         assert result is True
@@ -117,6 +132,18 @@ class TestShutdownCommand:
         # Verify handoff archived
         assert not handoff.exists()
         assert (outbox / "_read" / "handoff-2026-05-24T12-00-00.md").exists()
+        receipts = _session_receipts(sync_path, "claude")
+        assert len(receipts) == 1
+        receipt = yaml.safe_load(receipts[0].read_text())
+        assert receipt["agent"] == "claude"
+        assert receipt["session_id"] == session_id
+        assert receipt["outcome"] == "clean"
+        assert receipt["handoff_path"] == "outbox/claude/_read/handoff-2026-05-24T12-00-00.md"
+        assert receipt["commit_sha"] is None
+        assert receipt["tree_version"] == yaml.safe_load(
+            (sync_path / "runtime" / "TREE.yaml").read_text()
+        )["tree_version"]
+        assert receipts[0].name.startswith(f"claude-session-{session_id}-")
 
     def test_shutdown_force_without_handoff(self, fresh_project, sync_path):
         """--force should allow shutdown without handoff."""
@@ -314,6 +341,12 @@ class TestUnprocessedInboxGate:
         assert len(receipts) == 1
         receipt_data = yaml.safe_load(receipts[0].read_text())
         assert receipt_data["deferred_by"] == "claude"
+
+        session_receipts = _session_receipts(sync_path, "claude")
+        assert len(session_receipts) == 1
+        session_receipt = yaml.safe_load(session_receipts[0].read_text())
+        assert session_receipt["outcome"] == "deferred"
+        assert session_receipt["handoff_path"] == "outbox/claude/_read/handoff-2026-06-18T12-00-00.md"
 
     def test_shutdown_succeeds_with_drained_inbox(self, fresh_project, sync_path):
         self._add_handoff(sync_path, "claude")
