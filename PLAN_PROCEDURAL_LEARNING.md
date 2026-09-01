@@ -99,7 +99,7 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 | **4 — Pattern Mining** | Cluster recurring verified episodes into skill candidates | Candidates generated only from Learning-eligible history | **DONE** (`v3.1.0+`) |
 | **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three | **DONE** (`v3.1.0+`) |
 | **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote | **DONE** (`v3.1.0+`) |
-| **7 — Retrieval Integration** | Skills surfaced through the existing `KnowledgeAPI.assemble_context()` | Skill retrieval respects scope/precondition boundaries | PENDING |
+| **7 — Retrieval Integration** | Skills surfaced through the existing `KnowledgeAPI.assemble_context()` | Skill retrieval respects scope/precondition boundaries | **DONE** (`v3.1.0+`) |
 | **8 — Staleness & Decay** | Skills lose trust on contradicting evidence or environment drift, not just on schedule | A skill can be automatically downgraded or removed, not just added | PENDING |
 
 ### Phase 1 Implementation Summary (Completed)
@@ -162,6 +162,15 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 - [x] Integrated risk-tier governance check into `SkillStore.promote_version()`.
 - [x] CLI review approval and auto-promotion commands implemented in `cli/skill.py` (`stackmind skill approve`, `stackmind skill auto-promote`, `stackmind skill promote --human`).
 - [x] Complete test suite passing in `tests/test_phase6_risk_tiered_promotion.py`.
+
+### Phase 7 Implementation Summary (Completed)
+
+- [x] SkillRetriever implemented in `validators/skill/retriever.py` surfacing active verified skills matching task queries and preconditions.
+- [x] Active-only retrieval gate ensuring unverified (`CANDIDATE`, `EXPERIMENTAL`) and retired (`STALE`, `DEPRECATED`) skills are excluded from agent prompts.
+- [x] Strict Contract Scope Boundary filtering: skills whose target modules fall outside the active Contract `allow` scope or intersect with `deny` scope are filtered out.
+- [x] Integrated into `KnowledgeAPI.assemble_context(include_skills=True)` creating `ContextEntry` records with procedural guidance markdown.
+- [x] CLI retrieval command implemented in `cli/skill.py` (`stackmind skill retrieve`).
+- [x] Complete test suite passing in `tests/test_phase7_retrieval_integration.py`.
 
 ---
 

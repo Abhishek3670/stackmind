@@ -15,6 +15,7 @@ from .models import (
     SkillStatus,
     SkillStep,
 )
+from .retriever import SkillRetrievalResult, SkillRetriever
 from .store import SkillStore
 
 __all__ = [
@@ -27,6 +28,8 @@ __all__ = [
     "SkillMetrics",
     "SkillProvenance",
     "SkillRecord",
+    "SkillRetrievalResult",
+    "SkillRetriever",
     "SkillStatus",
     "SkillStep",
     "SkillStore",

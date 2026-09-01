@@ -617,10 +617,65 @@ def stats_command(project_path: str):
 
     table.add_row("Distinct Skills", str(stats["distinct_skills"]))
     table.add_row("Active Skills (Promoted)", f"[green]{stats['active_skills']}[/green]")
-    table.add_row("Candidate Skills", f"[cyan]{stats['candidates']}[/cyan]")
-    table.add_row("Experimental Skills", f"[yellow]{stats['experimental']}[/yellow]")
     table.add_row("Stale / Revalidating", f"[red]{stats['stale']}[/red]")
     table.add_row("Deprecated Skills", f"[dim red]{stats['deprecated']}[/dim red]")
     table.add_row("Total Version Manifests", str(stats["total_versions"]))
 
     console.print(table)
+
+
+@skill_group.command("retrieve")
+@click.argument("query")
+@click.option(
+    "--contract",
+    "-c",
+    default=None,
+    help="Contract file path or Work Order ID to enforce scope boundary",
+)
+@click.option(
+    "--limit",
+    "-l",
+    default=3,
+    type=int,
+    help="Maximum skills to retrieve (default: 3)",
+)
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+def retrieve_command(query: str, contract: str | None, limit: int, project_path: str):
+    """Retrieve and format active procedural skills matching a query and contract."""
+    console = Console()
+    from validators.skill.retriever import SkillRetriever
+
+    retriever = SkillRetriever(project_path)
+    results = retriever.retrieve_skills(query, contract=contract, limit=limit)
+
+    if not results:
+        console.print("[dim]No active skills matched the query and contract boundary.[/dim]")
+        return
+
+    table = Table(title=f"Retrieved Procedural Skills for '{query}' ({len(results)} match(es))")
+    table.add_column("Skill ID", style="bold cyan", no_wrap=True)
+    table.add_column("Name", style="bold green")
+    table.add_column("Risk", justify="center")
+    table.add_column("Confidence", justify="right", style="cyan")
+    table.add_column("Relevance", justify="right", style="magenta")
+    table.add_column("Matched Terms", style="italic")
+
+    for r in results:
+        table.add_row(
+            r.skill.skill_id,
+            f"{r.skill.name} v{r.skill.version}",
+            r.skill.risk_tier.value.upper(),
+            f"{r.skill.metrics.confidence_score:.2f}",
+            f"{r.relevance_score:.2f}",
+            ", ".join(r.matched_terms) or "-",
+        )
+
+    console.print(table)
+    console.print("\n" + retriever.format_prompt_section(results))
