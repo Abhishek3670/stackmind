@@ -679,3 +679,142 @@ def retrieve_command(query: str, contract: str | None, limit: int, project_path:
 
     console.print(table)
     console.print("\n" + retriever.format_prompt_section(results))
+
+
+@skill_group.command("audit")
+@click.option(
+    "--name",
+    "-n",
+    default=None,
+    help="Audit specific skill name (defaults to all active skills)",
+)
+@click.option(
+    "--auto-downgrade/--no-downgrade",
+    default=True,
+    help="Automatically transition stale/decayed skills from ACTIVE to STALE",
+)
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+def audit_command(name: str | None, auto_downgrade: bool, project_path: str):
+    """Audit active skills for code drift, missing modules, or confidence decay."""
+    console = Console()
+    from validators.skill.decay import SkillDecayManager
+
+    decay_mgr = SkillDecayManager(project_path)
+    reports = decay_mgr.audit_staleness(name, auto_downgrade=auto_downgrade)
+
+    if not reports:
+        console.print("[bold green][PASS][/bold green] All active procedural skills are fresh and aligned with project state.")
+        return
+
+    table = Table(title=f"Procedural Skill Staleness & Drift Audit ({len(reports)} issue(s) detected)")
+    table.add_column("Skill ID", style="bold cyan", no_wrap=True)
+    table.add_column("Name", style="bold green")
+    table.add_column("Confidence", justify="right", style="cyan")
+    table.add_column("Staleness Reasons", style="bold red")
+    table.add_column("Action Taken", style="bold yellow")
+    table.add_column("Details", style="italic")
+
+    for rep in reports:
+        action_str = f"Downgraded to STALE" if auto_downgrade else rep.recommended_action
+        table.add_row(
+            rep.skill_id,
+            f"{rep.skill_name} v{rep.version}",
+            f"{rep.confidence_score:.2f}",
+            ", ".join(rep.reasons),
+            action_str,
+            "; ".join(rep.details),
+        )
+
+    console.print(table)
+
+
+@skill_group.command("revalidate")
+@click.argument("name")
+@click.option(
+    "--version",
+    "-v",
+    type=int,
+    default=None,
+    help="Version number to revalidate (defaults to latest)",
+)
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+def revalidate_command(name: str, version: int | None, project_path: str):
+    """Re-run 3-stage verification pipeline on a STALE skill to restore ACTIVE status."""
+    console = Console()
+    from validators.skill.decay import SkillDecayManager
+
+    decay_mgr = SkillDecayManager(project_path)
+    slug = name.strip().lower()
+
+    try:
+        success, record, message = decay_mgr.revalidate_skill(slug, version=version)
+        if success:
+            console.print(f"[bold green][SUCCESS][/bold green] {message} ('{record.name}' v{record.version} is now ACTIVE)")
+        else:
+            console.print(f"[bold red][FAILED][/bold red] {message}")
+    except Exception as exc:
+        console.print(f"[bold red]Revalidation error:[/bold red] {exc}")
+
+
+@skill_group.command("feedback")
+@click.argument("name")
+@click.option(
+    "--success/--failure",
+    "is_success",
+    required=True,
+    help="Execution outcome of using this skill",
+)
+@click.option(
+    "--error",
+    "-e",
+    default=None,
+    help="Error diagnostic message if failure",
+)
+@click.option(
+    "--version",
+    "-v",
+    type=int,
+    default=None,
+    help="Version number",
+)
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+def feedback_command(name: str, is_success: bool, error: str | None, version: int | None, project_path: str):
+    """Record execution feedback for dynamic skill confidence decay or reinforcement."""
+    console = Console()
+    from validators.skill.decay import SkillDecayManager
+
+    decay_mgr = SkillDecayManager(project_path)
+    slug = name.strip().lower()
+
+    try:
+        updated = decay_mgr.record_feedback(slug, success=is_success, error_message=error, version=version)
+        status_styled = f"[green]{updated.status.value.upper()}[/green]" if updated.status == SkillStatus.ACTIVE else f"[red]{updated.status.value.upper()}[/red]"
+        console.print(
+            f"[bold]Updated metrics for '{updated.name}' v{updated.version}:[/bold] "
+            f"Confidence={updated.metrics.confidence_score:.2f}, "
+            f"SuccessRate={updated.metrics.success_rate:.1%}, "
+            f"Status={status_styled}"
+        )
+    except Exception as exc:
+        console.print(f"[bold red]Feedback recording failed:[/bold red] {exc}")

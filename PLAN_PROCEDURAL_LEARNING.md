@@ -100,7 +100,7 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 | **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three | **DONE** (`v3.1.0+`) |
 | **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote | **DONE** (`v3.1.0+`) |
 | **7 — Retrieval Integration** | Skills surfaced through the existing `KnowledgeAPI.assemble_context()` | Skill retrieval respects scope/precondition boundaries | **DONE** (`v3.1.0+`) |
-| **8 — Staleness & Decay** | Skills lose trust on contradicting evidence or environment drift, not just on schedule | A skill can be automatically downgraded or removed, not just added | PENDING |
+| **8 — Staleness & Decay** | Skills lose trust on contradicting evidence or environment drift, not just on schedule | A skill can be automatically downgraded or removed, not just added | **DONE** (`v3.1.0+`) |
 
 ### Phase 1 Implementation Summary (Completed)
 
@@ -171,6 +171,16 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 - [x] Integrated into `KnowledgeAPI.assemble_context(include_skills=True)` creating `ContextEntry` records with procedural guidance markdown.
 - [x] CLI retrieval command implemented in `cli/skill.py` (`stackmind skill retrieve`).
 - [x] Complete test suite passing in `tests/test_phase7_retrieval_integration.py`.
+
+### Phase 8 Implementation Summary (Completed)
+
+- [x] SkillDecayManager implemented in `validators/skill/decay.py` managing empirical confidence decay, code drift detection, and revalidation workflows.
+- [x] Dynamic feedback scoring with positive reinforcement and negative penalty (-0.20 per failure).
+- [x] Automated status downgrade from `ACTIVE` to `STALE` upon confidence dropping below 0.50 or high failure rates, immediately withdrawing active pointers.
+- [x] Code drift audit detecting target module drift or missing files.
+- [x] Revalidation pipeline flow (`revalidate_skill()`) restoring passing skills to `ACTIVE` or marking failing ones as `DEPRECATED`.
+- [x] CLI staleness audit, revalidation, and feedback commands implemented in `cli/skill.py` (`stackmind skill audit`, `stackmind skill revalidate`, `stackmind skill feedback`).
+- [x] Complete test suite passing in `tests/test_phase8_staleness_and_decay.py`.
 
 ---
 

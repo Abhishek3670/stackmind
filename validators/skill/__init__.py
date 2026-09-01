@@ -1,5 +1,6 @@
 """StackMind Verified Procedural Learning - Skill Subsystem."""
 
+from .decay import SkillDecayManager, StalenessReason, StalenessReport
 from .governor import (
     ApprovalReceipt,
     HumanApprovalRequiredError,
@@ -25,6 +26,7 @@ __all__ = [
     "RiskPromotionGateError",
     "RiskTier",
     "SkillApplicability",
+    "SkillDecayManager",
     "SkillMetrics",
     "SkillProvenance",
     "SkillRecord",
@@ -33,4 +35,6 @@ __all__ = [
     "SkillStatus",
     "SkillStep",
     "SkillStore",
+    "StalenessReason",
+    "StalenessReport",
 ]
