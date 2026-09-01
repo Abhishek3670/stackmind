@@ -49,6 +49,8 @@ KIND_PREFIXES = {
     "decision": "DEC",
     "review": "REV",
     "issue": "ISSUE",
+    "experience": "EXP",
+    "skill": "SKILL",
 }
 
 

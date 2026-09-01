@@ -91,18 +91,29 @@ Design source: §28.8. Persisted agent output, reports, and experience records a
 
 Confirmed by direct search of the codebase: there is currently no skill, experience, or pattern-learning concept anywhere in source (`grep -ril "skill"` across the repo returns nothing relevant), no `experience.db`, no SQLite index, no replay or canary harness. Every phase below is `NOT IMPLEMENTED`, starting from zero — which is fine; it just means Phase 0 isn't fixing something these phases already assume works.
 
-| Phase | Goal | Exit gate (summary) |
-|---|---|---|
-| **1 — Experience Capture** | Log verified executions as structured experience records | Experience artifacts written for every Learning-eligible run |
-| **2 — Experience Compilation** | Rebuildable T2-style SQLite/FTS index over experience records, following StackMind's existing "rebuildable derived cache" pattern rather than a new source of truth | Index rebuilds cleanly from raw records |
-| **3 — Skill Storage & Versioning** | `SKILL-` kind registered in the symbol registry; versioned storage with rollback | A skill can be created, versioned, and rolled back via CLI |
-| **4 — Pattern Mining** | Cluster recurring verified episodes into skill candidates | Candidates generated only from Learning-eligible history |
-| **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three |
-| **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote |
-| **7 — Retrieval Integration** | Skills surfaced through the existing `KnowledgeAPI.assemble_context()` | Skill retrieval respects scope/precondition boundaries |
-| **8 — Staleness & Decay** | Skills lose trust on contradicting evidence or environment drift, not just on schedule | A skill can be automatically downgraded or removed, not just added |
+| Phase | Goal | Exit gate (summary) | Status |
+|---|---|---|---|
+| **1 — Experience Capture** | Log verified executions as structured experience records | Experience artifacts written for every Learning-eligible run | **DONE** (`v3.1.0+`) |
+| **2 — Experience Compilation** | Rebuildable T2-style SQLite/FTS index over experience records, following StackMind's existing "rebuildable derived cache" pattern rather than a new source of truth | Index rebuilds cleanly from raw records | PENDING |
+| **3 — Skill Storage & Versioning** | `SKILL-` kind registered in the symbol registry; versioned storage with rollback | A skill can be created, versioned, and rolled back via CLI | PENDING |
+| **4 — Pattern Mining** | Cluster recurring verified episodes into skill candidates | Candidates generated only from Learning-eligible history | PENDING |
+| **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three | PENDING |
+| **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote | PENDING |
+| **7 — Retrieval Integration** | Skills surfaced through the existing `KnowledgeAPI.assemble_context()` | Skill retrieval respects scope/precondition boundaries | PENDING |
+| **8 — Staleness & Decay** | Skills lose trust on contradicting evidence or environment drift, not just on schedule | A skill can be automatically downgraded or removed, not just added | PENDING |
 
-Before starting Phase 1, resolve one open documentation inconsistency: the design source currently defines three overlapping skill-lifecycle state diagrams (§6, §24.3, §24.4) that don't fully reconcile (e.g., `REMOVED` appears in one but not the others). Merge these into one lifecycle with two triggers (environment staleness, evidence-based decay) before it becomes the schema for Phase 3.
+### Phase 1 Implementation Summary (Completed)
+
+- [x] `EXP-` kind registered in `validators/knowledge/registry.py` with 16-hex birth-hashing.
+- [x] Formal JSON schema created in `schemas/experience.schema.json`.
+- [x] Structured data models implemented in `validators/experience/models.py`.
+- [x] Raw Tier 1 filesystem store implemented in `validators/experience/store.py` (`.sync/experience/records/EXP-*.json`).
+- [x] Experience recorder implemented in `validators/experience/recorder.py` capturing actions, observations, failures, corrections, and verification dimensions.
+- [x] Integrated automatic capture and event logging in `validators/harness/runner.py`.
+- [x] CLI tooling implemented in `cli/experience.py` (`stackmind experience list`, `show`, `stats`).
+- [x] Complete test suite passing in `tests/test_phase1_experience_capture.py`.
+
+Before starting Phase 3, resolve one open documentation inconsistency: the design source currently defines three overlapping skill-lifecycle state diagrams (§6, §24.3, §24.4) that don't fully reconcile (e.g., `REMOVED` appears in one but not the others). Merge these into one lifecycle with two triggers (environment staleness, evidence-based decay) before it becomes the schema for Phase 3.
 
 ---
 

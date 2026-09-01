@@ -389,10 +389,27 @@ class AgentRunner:
                     has_unhandled_blockers=bool(decision.blockers),
                 )
 
+                from validators.experience.recorder import ExperienceRecorder
+                experience_record = ExperienceRecorder.capture_from_stage_inputs(
+                    self.project_path,
+                    self.agent,
+                    stage_inputs,
+                    diff=diff,
+                    dimensions=dimensions,
+                    trust_level=trust_level,
+                    duration_ms=int((time.monotonic() - poll_started) * 1000),
+                )
+
                 stage_inputs['diff'] = diff
                 stage_inputs['declaration_matches'] = declaration_matches
                 stage_inputs['dimensions'] = dimensions
                 stage_inputs['trust_level'] = trust_level
+                stage_inputs['experience_record'] = experience_record
+
+                exp_write = FileWrite(
+                    Path('.sync') / 'experience' / 'records' / f'{experience_record.experience_id}.json',
+                    json.dumps(experience_record.to_dict(), indent=2, sort_keys=True),
+                )
 
                 report_write = self._build_report_write(
                     stage_inputs,
@@ -409,7 +426,7 @@ class AgentRunner:
                     write_ms=hold_ms,
                 )
                 events_write = self._build_events_write(stage_inputs, hold_ms, lock_wait_ms)
-                self._apply_ops(self.project_path, [final_report, events_write])
+                self._apply_ops(self.project_path, [final_report, events_write, exp_write])
             finally:
                 release_lock(self.sync_path, self.agent)
 
@@ -628,12 +645,15 @@ class AgentRunner:
         trust_level = stage_inputs.get('trust_level')
         diff = stage_inputs.get('diff')
         dimensions = stage_inputs.get('dimensions')
+        exp_rec = stage_inputs.get('experience_record')
         event = {
             'agent': self.agent,
             'benchmark_mode': stage_inputs['retrieval'].mode,
             'context_revision': stage_inputs['context'].revision,
             'declaration_matches': stage_inputs.get('declaration_matches', True),
             'event': 'harness.run',
+            'experience_id': exp_rec.experience_id if exp_rec else None,
+            'learning_eligible': exp_rec.learning_eligible if exp_rec else False,
             'lock_hold_ms': lock_hold_ms,
             'lock_wait_ms': lock_wait_ms,
             'observed_changes_count': len(diff.all_changed_files) if diff else 0,
@@ -708,6 +728,7 @@ class AgentRunner:
         trust_level = stage_inputs.get('trust_level')
         dimensions = stage_inputs.get('dimensions')
         diff = stage_inputs.get('diff')
+        exp_rec = stage_inputs.get('experience_record')
         return {
             'agent': self.agent,
             'benchmark_mode': retrieval.mode,
@@ -718,6 +739,7 @@ class AgentRunner:
             'context_stale': context.stale,
             'cost_estimate': round(completion.cost_estimate + retrieval.cost_estimate, 6),
             'declaration_matches': stage_inputs.get('declaration_matches', True),
+            'experience_id': exp_rec.experience_id if exp_rec else None,
             'knowledge_git_commit': context.git_commit,
             'latency_ms': {
                 'llm': stage_inputs['llm_ms'],
@@ -725,6 +747,7 @@ class AgentRunner:
                 'retrieval': stage_inputs['retrieval_ms'],
                 'write': write_ms,
             },
+            'learning_eligible': exp_rec.learning_eligible if exp_rec else False,
             'lock_hold_ms': lock_hold_ms,
             'lock_wait_ms': lock_wait_ms,
             'model': completion.model,
