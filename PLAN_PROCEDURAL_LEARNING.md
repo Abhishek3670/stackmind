@@ -96,7 +96,7 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 | **1 — Experience Capture** | Log verified executions as structured experience records | Experience artifacts written for every Learning-eligible run | **DONE** (`v3.1.0+`) |
 | **2 — Experience Compilation** | Rebuildable T2-style SQLite/FTS index over experience records, following StackMind's existing "rebuildable derived cache" pattern rather than a new source of truth | Index rebuilds cleanly from raw records | **DONE** (`v3.1.0+`) |
 | **3 — Skill Storage & Versioning** | `SKILL-` kind registered in the symbol registry; versioned storage with rollback | A skill can be created, versioned, and rolled back via CLI | **DONE** (`v3.1.0+`) |
-| **4 — Pattern Mining** | Cluster recurring verified episodes into skill candidates | Candidates generated only from Learning-eligible history | PENDING |
+| **4 — Pattern Mining** | Cluster recurring verified episodes into skill candidates | Candidates generated only from Learning-eligible history | **DONE** (`v3.1.0+`) |
 | **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three | PENDING |
 | **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote | PENDING |
 | **7 — Retrieval Integration** | Skills surfaced through the existing `KnowledgeAPI.assemble_context()` | Skill retrieval respects scope/precondition boundaries | PENDING |
@@ -131,6 +131,17 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 - [x] Full version promotion and historical rollback with explicit provenance lineage references.
 - [x] CLI tooling implemented in `cli/skill.py` (`stackmind skill create`, `list`, `show`, `promote`, `rollback`, `deprecate`, `stats`).
 - [x] Complete test suite passing in `tests/test_phase3_skill_storage_and_versioning.py`.
+
+### Phase 4 Implementation Summary (Completed)
+
+- [x] Task normalization and intent extraction implemented in `validators/learning/normalizer.py`.
+- [x] Trajectory similarity and pattern clustering implemented in `validators/learning/cluster.py`.
+- [x] Hard learning-eligibility gate enforcing that only verified, completed episodes participate in clustering.
+- [x] $N \ge 3$ evidence threshold strictly enforced before candidate skill distillation is permitted.
+- [x] Skill candidate distillation engine with risk-tier assignment and provenance tracking in `validators/learning/distiller.py`.
+- [x] High-level PatternMiner coordinator in `validators/learning/miner.py`.
+- [x] CLI tooling implemented in `cli/learn.py` (`stackmind learn clusters`, `stackmind learn mine`, `stackmind learn distill`).
+- [x] Complete test suite passing in `tests/test_phase4_pattern_mining.py`.
 
 ---
 
