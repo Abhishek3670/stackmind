@@ -98,7 +98,7 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 | **3 — Skill Storage & Versioning** | `SKILL-` kind registered in the symbol registry; versioned storage with rollback | A skill can be created, versioned, and rolled back via CLI | **DONE** (`v3.1.0+`) |
 | **4 — Pattern Mining** | Cluster recurring verified episodes into skill candidates | Candidates generated only from Learning-eligible history | **DONE** (`v3.1.0+`) |
 | **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three | **DONE** (`v3.1.0+`) |
-| **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote | PENDING |
+| **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote | **DONE** (`v3.1.0+`) |
 | **7 — Retrieval Integration** | Skills surfaced through the existing `KnowledgeAPI.assemble_context()` | Skill retrieval respects scope/precondition boundaries | PENDING |
 | **8 — Staleness & Decay** | Skills lose trust on contradicting evidence or environment drift, not just on schedule | A skill can be automatically downgraded or removed, not just added | PENDING |
 
@@ -152,6 +152,16 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 - [x] Strict promotion gate integrated into `SkillStore.promote_version()`, blocking promotion to `ACTIVE` if any stage fails.
 - [x] CLI testing and promotion commands implemented in `cli/skill.py` (`stackmind skill test`, `stackmind skill promote`).
 - [x] Complete test suite passing in `tests/test_phase5_verification_pipeline.py`.
+
+### Phase 6 Implementation Summary (Completed)
+
+- [x] Promotion autonomy matrix and human-in-the-loop review governor implemented in `validators/skill/governor.py`.
+- [x] `LOW` risk tier skills auto-promotable upon passing the 3-stage verification pipeline.
+- [x] `MEDIUM` risk tier skills gated by Lead Agent (`Claude`/`CEO`) authorization.
+- [x] `HIGH` and `CRITICAL` risk tier skills strictly require explicit Human / CEO review approval receipts (`.sync/skills/approvals/*.approval.json`).
+- [x] Integrated risk-tier governance check into `SkillStore.promote_version()`.
+- [x] CLI review approval and auto-promotion commands implemented in `cli/skill.py` (`stackmind skill approve`, `stackmind skill auto-promote`, `stackmind skill promote --human`).
+- [x] Complete test suite passing in `tests/test_phase6_risk_tiered_promotion.py`.
 
 ---
 

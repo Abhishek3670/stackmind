@@ -352,6 +352,22 @@ def test_command(name: str, version: int | None, project_path: str):
     help="Audit rationale for promoting this skill",
 )
 @click.option(
+    "--actor",
+    "-a",
+    default="claude",
+    help="Agent identity requesting promotion (e.g. claude, codex, ceo)",
+)
+@click.option(
+    "--human",
+    is_flag=True,
+    help="Explicit human operator authorization flag",
+)
+@click.option(
+    "--allow-medium",
+    is_flag=True,
+    help="Allow autonomous promotion for MEDIUM risk tier",
+)
+@click.option(
     "--skip-pipeline",
     is_flag=True,
     help="Bypass verification pipeline gate (requires explicit justification)",
@@ -364,7 +380,16 @@ def test_command(name: str, version: int | None, project_path: str):
     type=click.Path(exists=True),
     help="Project root directory",
 )
-def promote_command(name: str, version: int | None, reason: str, skip_pipeline: bool, project_path: str):
+def promote_command(
+    name: str,
+    version: int | None,
+    reason: str,
+    actor: str,
+    human: bool,
+    allow_medium: bool,
+    skip_pipeline: bool,
+    project_path: str,
+):
     """Promote a candidate/experimental skill version to ACTIVE status after verification."""
     console = Console()
     store = SkillStore(project_path)
@@ -377,10 +402,123 @@ def promote_command(name: str, version: int | None, reason: str, skip_pipeline: 
             return
 
     try:
-        promoted = store.promote_version(slug, version, reason=reason, skip_pipeline=skip_pipeline)
-        console.print(f"[bold green][SUCCESS][/bold green] Promoted skill '{promoted.name}' v{promoted.version} ({promoted.skill_id}) to ACTIVE.")
+        promoted = store.promote_version(
+            slug,
+            version,
+            reason=reason,
+            author_agent=actor,
+            is_human=human,
+            allow_medium_auto=allow_medium,
+            skip_pipeline=skip_pipeline,
+        )
+        console.print(
+            f"[bold green][SUCCESS][/bold green] Promoted skill '{promoted.name}' v{promoted.version} "
+            f"({promoted.skill_id}, risk={promoted.risk_tier.value.upper()}) to ACTIVE."
+        )
     except Exception as exc:
         console.print(f"[bold red]Promotion failed:[/bold red] {exc}")
+
+
+@skill_group.command("approve")
+@click.argument("name")
+@click.option(
+    "--version",
+    "-v",
+    type=int,
+    default=None,
+    help="Version number to approve (defaults to latest)",
+)
+@click.option(
+    "--approver",
+    "-a",
+    default="human",
+    help="Identity granting review approval (e.g. human, ceo, lead-architect)",
+)
+@click.option(
+    "--reason",
+    "-r",
+    required=True,
+    help="Detailed review rationale for approving high/critical risk skill",
+)
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+def approve_command(name: str, version: int | None, approver: str, reason: str, project_path: str):
+    """Record a review approval receipt for a high-risk or critical procedural skill."""
+    console = Console()
+    store = SkillStore(project_path)
+    slug = name.strip().lower()
+    skill = store.get_skill(slug, version=version)
+
+    if not skill:
+        console.print(f"[bold red]Error:[/bold red] Skill '{slug}' (v{version or 'latest'}) not found.")
+        return
+
+    from validators.skill.governor import PromotionGovernor
+    governor = PromotionGovernor(project_path)
+    receipt = governor.grant_approval(skill, approver=approver, rationale=reason)
+
+    console.print(
+        f"[bold green][SUCCESS][/bold green] Granted review approval for '{skill.name}' v{skill.version} "
+        f"(Risk: {skill.risk_tier.value.upper()})\n"
+        f"[bold]Approval ID:[/bold] [cyan]{receipt.approval_id}[/cyan]\n"
+        f"[bold]Approver:[/bold] {receipt.approver}\n"
+        f"[bold]Rationale:[/bold] {receipt.rationale}"
+    )
+
+
+@skill_group.command("auto-promote")
+@click.option(
+    "--max-risk-tier",
+    "-m",
+    type=click.Choice(["low", "medium"]),
+    default="low",
+    help="Maximum risk tier eligible for autonomous promotion (default: low)",
+)
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+def auto_promote_command(max_risk_tier: str, project_path: str):
+    """Autonomously verify and promote eligible unpromoted candidates."""
+    console = Console()
+    store = SkillStore(project_path)
+    candidates = store.list_skills(status=SkillStatus.CANDIDATE)
+
+    if not candidates:
+        console.print("[dim]No candidate skills found awaiting promotion.[/dim]")
+        return
+
+    allowed_tiers = {RiskTier.LOW} if max_risk_tier == "low" else {RiskTier.LOW, RiskTier.MEDIUM}
+    promoted_count = 0
+
+    for cand in candidates:
+        if cand.risk_tier not in allowed_tiers:
+            console.print(f"[yellow]Skipping '{cand.name}' v{cand.version}: risk tier {cand.risk_tier.value.upper()} exceeds max {max_risk_tier.upper()}[/yellow]")
+            continue
+
+        try:
+            promoted = store.promote_version(
+                cand.name,
+                cand.version,
+                reason=f"Auto-promoted via policy (max risk: {max_risk_tier})",
+                allow_medium_auto=(max_risk_tier == "medium"),
+            )
+            console.print(f"[bold green][PROMOTED][/bold green] '{promoted.name}' v{promoted.version} ({promoted.risk_tier.value.upper()})")
+            promoted_count += 1
+        except Exception as exc:
+            console.print(f"[bold red]Failed '{cand.name}' v{cand.version}:[/bold red] {exc}")
+
+    console.print(f"\n[bold]Auto-promotion complete:[/bold] {promoted_count} skill(s) promoted.")
 
 
 @skill_group.command("rollback")

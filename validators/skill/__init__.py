@@ -1,5 +1,11 @@
 """StackMind Verified Procedural Learning - Skill Subsystem."""
 
+from .governor import (
+    ApprovalReceipt,
+    HumanApprovalRequiredError,
+    PromotionGovernor,
+    RiskPromotionGateError,
+)
 from .models import (
     RiskTier,
     SkillApplicability,
@@ -12,6 +18,10 @@ from .models import (
 from .store import SkillStore
 
 __all__ = [
+    "ApprovalReceipt",
+    "HumanApprovalRequiredError",
+    "PromotionGovernor",
+    "RiskPromotionGateError",
     "RiskTier",
     "SkillApplicability",
     "SkillMetrics",

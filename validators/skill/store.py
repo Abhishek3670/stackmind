@@ -159,9 +159,12 @@ class SkillStore:
         *,
         reason: str = "Passed verification and canary checks",
         author_agent: str = "claude",
+        is_human: bool = False,
+        allow_medium_auto: bool = False,
         skip_pipeline: bool = False,
+        skip_governor: bool = False,
     ) -> SkillRecord:
-        """Promote a specific version of a skill to ACTIVE status after passing verification pipeline."""
+        """Promote a specific version of a skill to ACTIVE status after passing verification pipeline and risk governance."""
         current = self.get_skill(name, version)
         if current is None:
             raise ValueError(f"Skill '{name}' version {version} does not exist.")
@@ -180,6 +183,16 @@ class SkillStore:
                     f"Promotion rejected: Skill '{name}' v{version} failed verification pipeline "
                     f"in stages {failed_stages}. Details: {stage_errors}"
                 )
+
+        if not skip_governor:
+            from validators.skill.governor import PromotionGovernor
+            governor = PromotionGovernor(self.project_path)
+            governor.enforce_promotion_governance(
+                current,
+                actor=author_agent,
+                is_human=is_human,
+                allow_medium_auto=allow_medium_auto,
+            )
 
         prov = SkillProvenance(
             source_experience_ids=current.provenance.source_experience_ids,
