@@ -94,8 +94,8 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 | Phase | Goal | Exit gate (summary) | Status |
 |---|---|---|---|
 | **1 — Experience Capture** | Log verified executions as structured experience records | Experience artifacts written for every Learning-eligible run | **DONE** (`v3.1.0+`) |
-| **2 — Experience Compilation** | Rebuildable T2-style SQLite/FTS index over experience records, following StackMind's existing "rebuildable derived cache" pattern rather than a new source of truth | Index rebuilds cleanly from raw records | PENDING |
-| **3 — Skill Storage & Versioning** | `SKILL-` kind registered in the symbol registry; versioned storage with rollback | A skill can be created, versioned, and rolled back via CLI | PENDING |
+| **2 — Experience Compilation** | Rebuildable T2-style SQLite/FTS index over experience records, following StackMind's existing "rebuildable derived cache" pattern rather than a new source of truth | Index rebuilds cleanly from raw records | **DONE** (`v3.1.0+`) |
+| **3 — Skill Storage & Versioning** | `SKILL-` kind registered in the symbol registry; versioned storage with rollback | A skill can be created, versioned, and rolled back via CLI | **DONE** (`v3.1.0+`) |
 | **4 — Pattern Mining** | Cluster recurring verified episodes into skill candidates | Candidates generated only from Learning-eligible history | PENDING |
 | **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three | PENDING |
 | **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote | PENDING |
@@ -113,7 +113,24 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 - [x] CLI tooling implemented in `cli/experience.py` (`stackmind experience list`, `show`, `stats`).
 - [x] Complete test suite passing in `tests/test_phase1_experience_capture.py`.
 
-Before starting Phase 3, resolve one open documentation inconsistency: the design source currently defines three overlapping skill-lifecycle state diagrams (§6, §24.3, §24.4) that don't fully reconcile (e.g., `REMOVED` appears in one but not the others). Merge these into one lifecycle with two triggers (environment staleness, evidence-based decay) before it becomes the schema for Phase 3.
+### Phase 2 Implementation Summary (Completed)
+
+- [x] Derived SQLite & FTS5 compilation index implemented in `validators/experience/index.py` (`.sync/experience/cache/experience_index.db`).
+- [x] Rebuildable derived cache architecture adhering to StackMind's 3-tier storage model (Tier 1 raw JSON records $\to$ Tier 2 query cache).
+- [x] Incremental synchronization (`update_index`) detecting modified, added, and deleted experience records via content hashing.
+- [x] Full-text search with BM25 ranking, snippet highlighting, and filtering by `learning_eligible`, `agent_id`, and `task_signature`.
+- [x] CLI compilation and search commands implemented in `cli/experience.py` (`stackmind experience compile`, `stackmind experience search`).
+- [x] Rebuildability invariant verified by unit and integration tests (`tests/test_phase2_experience_compilation.py`).
+
+### Phase 3 Implementation Summary (Completed)
+
+- [x] Resolved and unified skill lifecycle states (`CANDIDATE`, `EXPERIMENTAL`, `ACTIVE`, `STALE`, `DEPRECATED`, `ARCHIVED`).
+- [x] Formal JSON schema created in `schemas/skill.schema.json`.
+- [x] Data models and Draft-7 validation implemented in `validators/skill/models.py`.
+- [x] Immutable versioned manifest storage implemented in `validators/skill/store.py` (`.sync/skills/manifests/<name>/v<N>.json` and `.sync/skills/active/<name>.json`).
+- [x] Full version promotion and historical rollback with explicit provenance lineage references.
+- [x] CLI tooling implemented in `cli/skill.py` (`stackmind skill create`, `list`, `show`, `promote`, `rollback`, `deprecate`, `stats`).
+- [x] Complete test suite passing in `tests/test_phase3_skill_storage_and_versioning.py`.
 
 ---
 

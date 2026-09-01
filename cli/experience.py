@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.syntax import Syntax
 
+from validators.experience.index import ExperienceIndex
 from validators.experience.store import ExperienceStore
 from validators.harness.snapshot import TrustLevel
 
@@ -191,6 +192,8 @@ def stats_command(project_path: str):
     console = Console()
     store = ExperienceStore(project_path)
     stats = store.stats()
+    index = ExperienceIndex(project_path)
+    idx_stats = index.stats()
 
     table = Table(title="Experience Subsystem Statistics")
     table.add_column("Metric", style="bold")
@@ -200,5 +203,106 @@ def stats_command(project_path: str):
     table.add_row("Learning Eligible (Top Tier)", f"[green]{stats['learning_eligible']}[/green]")
     table.add_row("Verified (Middle Tier)", f"[yellow]{stats['verified']}[/yellow]")
     table.add_row("Observable Only (Base Tier)", f"[dim red]{stats['observable']}[/dim red]")
+    table.add_row("FTS Indexed Records", str(idx_stats["indexed"]))
+    table.add_row("Index Database Size", f"{idx_stats['db_size_bytes']} bytes")
+
+    console.print(table)
+
+
+@experience_group.command("compile")
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+@click.option(
+    "--clean",
+    "-c",
+    is_flag=True,
+    help="Perform a clean rebuild from scratch, wiping existing SQLite cache",
+)
+def compile_command(project_path: str, clean: bool):
+    """Compile Tier 1 raw experience records into the Tier 2 SQLite/FTS5 index."""
+    console = Console()
+    index = ExperienceIndex(project_path)
+
+    if clean:
+        console.print("[dim]Performing clean rebuild of experience compilation index...[/dim]")
+        count = index.build_index(clean=True)
+        console.print(f"[bold green][SUCCESS][/bold green] Rebuilt experience index with {count} record(s).")
+    else:
+        upserted, deleted = index.update_index()
+        console.print(f"[bold green][SUCCESS][/bold green] Synchronized experience index: {upserted} updated/inserted, {deleted} removed.")
+
+
+@experience_group.command("search")
+@click.argument("query")
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+@click.option(
+    "--eligible-only",
+    "-e",
+    is_flag=True,
+    help="Filter to only learning-eligible experiences",
+)
+@click.option(
+    "--agent",
+    "-a",
+    "agent_id",
+    default=None,
+    help="Filter by agent identifier",
+)
+@click.option(
+    "--limit",
+    "-n",
+    default=10,
+    type=int,
+    help="Maximum results to return",
+)
+def search_command(query: str, project_path: str, eligible_only: bool, agent_id: str | None, limit: int):
+    """Search compiled experience history using full-text BM25 ranking."""
+    console = Console()
+    index = ExperienceIndex(project_path)
+    results = index.search(query, learning_eligible_only=eligible_only, agent_id=agent_id, limit=limit)
+
+    if not results:
+        console.print(f"[dim]No experience records matched query: '{query}'.[/dim]")
+        return
+
+    table = Table(title=f"Experience Search Results for '{query}' ({len(results)} matches)")
+    table.add_column("Experience ID", style="bold cyan", no_wrap=True)
+    table.add_column("Task Signature", style="magenta")
+    table.add_column("Agent", style="blue")
+    table.add_column("Trust Level", justify="center")
+    table.add_column("Eligible", justify="center")
+    table.add_column("Snippet / Match", style="italic")
+
+    for r in results:
+        trust_style = {
+            TrustLevel.LEARNING_ELIGIBLE: "[bold green]LEARNING_ELIGIBLE[/bold green]",
+            TrustLevel.VERIFIED: "[bold yellow]VERIFIED[/bold yellow]",
+            TrustLevel.OBSERVABLE: "[dim red]OBSERVABLE[/dim red]",
+        }.get(r.trust_level, str(r.trust_level))
+
+        eligible_str = "[green]YES[/green]" if r.learning_eligible else "[dim red]NO[/dim red]"
+        snippet_text = r.matched_snippet.replace("[match]", "[bold yellow]").replace("[/match]", "[/bold yellow]") if r.matched_snippet else "-"
+
+        table.add_row(
+            r.experience_id,
+            r.task_signature,
+            r.agent_id,
+            trust_style,
+            eligible_str,
+            snippet_text,
+        )
 
     console.print(table)

@@ -1,5 +1,4 @@
-"""StackMind Verified Procedural Learning - Experience Subsystem."""
-
+from .index import ExperienceIndex, ExperienceSearchResult
 from .models import (
     ExperienceAction,
     ExperienceCorrection,
@@ -15,9 +14,11 @@ __all__ = [
     "ExperienceAction",
     "ExperienceCorrection",
     "ExperienceFailure",
+    "ExperienceIndex",
     "ExperienceObservation",
     "ExperienceRecord",
     "ExperienceRecorder",
+    "ExperienceSearchResult",
     "ExperienceStore",
     "ExperienceVerification",
 ]

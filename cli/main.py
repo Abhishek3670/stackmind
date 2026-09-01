@@ -387,11 +387,13 @@ def lock_status(project_path: str):
 
 
 from .experience import experience_group
+from .skill import skill_group
 
 cli.add_command(graph)
 cli.add_command(harness)
 cli.add_command(analyze)
 cli.add_command(experience_group)
+cli.add_command(skill_group)
 
 if __name__ == "__main__":
     cli()
