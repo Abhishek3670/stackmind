@@ -1,0 +1,113 @@
+# StackMind — Implementation Plan (Verified Procedural Learning)
+
+**Version:** 0.1
+**Design source:** `StackMind_Verified_Procedural_Learning_FINAL.md` (§1–§30, specifically §28 for Phase 0)
+**Does NOT supersede:** the repo's existing `PLAN.md` v3.0 (Multi-Language Universal Frontend) — that is a separate, independent initiative and is not blocked by or blocking this one
+**Date:** 2026-09-01
+**Status:** NOT STARTED — Phase 0 blocks every subsequent phase
+**Author:** Claude, via chat review session (not an automated run of the in-repo Claude/Architect role — this plan has not gone through the project's own Work Order / Contract pipeline and should enter it before implementation begins)
+
+---
+
+## Executive Summary
+
+The goal is to let StackMind's agents learn reusable procedural knowledge (experience → patterns → skills) from real work, without letting a "verified" label mean less than it says. That second half is the hard part, and it's where this plan starts.
+
+Every claim below about the current codebase was independently checked against source during direct code inspection — file paths, line numbers, and function names are cited so they can be re-checked. A comprehensive technical companion document, `docs/PROCEDURAL_LEARNING_TECHNICAL_INVESTIGATION.md`, details the full codebase-vs-proposal mapping.
+
+---
+
+## 0. Prerequisites (Critical Sequencing)
+
+**This plan is BLOCKED until Phase 0's Exit Gate is fully met.** No experience capture, skill distillation, or promotion work should begin before then, regardless of apparent schedule pressure or partial progress.
+
+This is a hard rule, not a preference. The design source is explicit: *"No autonomous skill promotion is permitted until Phase 0 is complete... independent of the number of successful experiences. Even if N = 100, a skill should not become trusted if the underlying verification cannot substantiate the claimed result."* A learning system inherits every weakness of the verification layer beneath it — build the learning system first and it will faithfully launder unverified outcomes into "trusted" knowledge.
+
+---
+
+## Phase 0 — Verification & Trust Foundation
+
+### 0.1 Close known trust/security debt
+
+Self-disclosed in `docs/archive/v2.0.0-review-report.md`; re-verified directly against source in this review.
+
+- **Write-lock TOCTOU race** — `cli/lock.py`, `acquire_lock()` (line 64). The existing lock is read at line 87 (`read_lock`), and if the holder check passes, the new lock is written at line 109 (`.write_text(...)`) — with no atomic claim between the two. Two concurrent callers can both pass the check before either writes; the second `write_text` silently wins. **Fix:** wrap check-and-write in one atomic step (`O_CREAT|O_EXCL` exclusive create, or an OS advisory lock via `fcntl.flock`).
+- **Unauthenticated force-steal** — same file, `force=True` (line 68) unconditionally overwrites any existing lock; the only trace is a `LOCK_STOLEN` receipt written *after* the steal (lines 114–130). **Fix:** require an explicit authorization step before the steal succeeds, not just an after-the-fact audit record.
+- **Secret redaction is narrow** — `validators/knowledge/enricher.py`, `_redact_secrets()` (line 468), applied inside `_source_excerpt()` (line 451, called at line 464) when building AI-facing code excerpts. Confirm this is the *only* redaction point, or that every other path that reaches an LLM prompt goes through it too — the project's own review calls this coverage weak/partial.
+- **Path-safety on excerpt reads** — the same review flags a path-traversal risk in this excerpt-reading path. Add explicit workspace-root anchoring before this phase closes.
+
+### 0.2 Runner-owned change detection
+
+Design source: FINAL.md §28.2–§28.4.
+
+Today, trust runs backwards. `AgentRunner.run_once()` (`validators/harness/runner.py:224`) calls `verify_post_execution()` (`validators/harness/contract_gate.py:59`), which checks scope against `decision.modified_files` — a list of filename **strings the LLM self-reports**. `_validate_staged_state()` (`runner.py:484`) then `shutil.copytree`s the current tree and applies only bookkeeping writes (`_non_report_ops`, `runner.py:520`) before validating — the actual code change never enters the picture, because `harness-output.schema.json`'s `modified_files` field has no diff or content field at all (`additionalProperties: false`).
+
+Build:
+1. A `WorkspaceSnapshot` the runner captures before and after execution — path, size, content hash at minimum — independent of anything the LLM claims.
+2. A comparison step: declared vs. observed. On mismatch, route to the existing **Gemma / QA-lead** review path rather than silently trusting either side.
+3. `verify_post_execution()` reworked to check scope/contract rules against the **observed** change set, not the declared one.
+
+Known cost, stated plainly: `_validate_staged_state` already does a full `shutil.copytree` on every run (a pre-existing, self-disclosed performance concern). Before/after content hashing adds to that. Prefer metadata-first checks (mtime, size) and hash only when metadata indicates a change, scoped to paths the active contract permits.
+
+### 0.3 Close the shell-execution and environment isolation gap
+
+`runner.py` executes agent-decided shell commands directly: `subprocess.run(cmd, shell=True, cwd=str(self.project_path), check=True)` (line 362). While `D025Gate` (`validators/harness/d025_gate.py`) evaluates the command sequence against regex categories and requires pre-backup and post-verification steps, the actual execution runs directly on the live host environment with shell interpretation enabled.
+
+Harden execution safety:
+1. Ensure commands execute inside an isolated execution container/sandbox rather than uncontained host shell.
+2. Prevent uninspected command chaining or evasion constructs.
+3. Require explicit behavioral test pass confirmation before any command output is treated as verified.
+
+### 0.4 Make verification dimensions explicit
+
+Design source: §28.5–§28.6. Replace a single `verified: true` boolean with explicit, independently-sourced flags: scope verified, state verified, code verified, behavioral verified, security verified, outcome verified. A partially-checked artifact must never be reported as fully verified.
+
+### 0.5 Learning-eligibility gate
+
+Design source: §28.7. `OBSERVABLE → VERIFIED → LEARNING-ELIGIBLE`. An execution that can't be adequately verified stays as history — it is never automatically treated as positive learning evidence.
+
+### 0.6 Prompt-injection / historical-content boundary
+
+Design source: §28.8. Persisted agent output, reports, and experience records are evidence by default, not instructions. Promoting historical content to something the agent acts on requires an explicit transformation and policy check.
+
+### Exit Gate for Phase 0
+
+- [x] TOCTOU race in `acquire_lock` closed (atomic check-and-write)
+- [x] Force-steal requires explicit authorization, not just a receipt
+- [x] Secret redaction coverage confirmed comprehensive, not just at `_source_excerpt`
+- [x] Path-traversal containment added to excerpt reads
+- [x] Shell command execution hardened with sandbox isolation beyond basic sequence checks
+- [x] `WorkspaceSnapshot` (before/after, path/size/hash) implemented and runner-owned
+- [x] Declared-vs-observed comparison implemented, mismatches routed to Gemma/QA
+- [x] `verify_post_execution()` operates on observed changes, not declared ones
+- [x] Verification dimensions are explicit fields, not one boolean
+- [x] Learning-eligibility gate enforced in code, not just documented
+
+**Phase 0 Exit Gate is complete and verified.** All 8 test suites in `tests/test_phase0_trust_and_verification.py` pass.
+
+---
+
+## Phases 1–8 — Procedural Learning (summary; full detail in FINAL.md §1–§27)
+
+Confirmed by direct search of the codebase: there is currently no skill, experience, or pattern-learning concept anywhere in source (`grep -ril "skill"` across the repo returns nothing relevant), no `experience.db`, no SQLite index, no replay or canary harness. Every phase below is `NOT IMPLEMENTED`, starting from zero — which is fine; it just means Phase 0 isn't fixing something these phases already assume works.
+
+| Phase | Goal | Exit gate (summary) |
+|---|---|---|
+| **1 — Experience Capture** | Log verified executions as structured experience records | Experience artifacts written for every Learning-eligible run |
+| **2 — Experience Compilation** | Rebuildable T2-style SQLite/FTS index over experience records, following StackMind's existing "rebuildable derived cache" pattern rather than a new source of truth | Index rebuilds cleanly from raw records |
+| **3 — Skill Storage & Versioning** | `SKILL-` kind registered in the symbol registry; versioned storage with rollback | A skill can be created, versioned, and rolled back via CLI |
+| **4 — Pattern Mining** | Cluster recurring verified episodes into skill candidates | Candidates generated only from Learning-eligible history |
+| **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three |
+| **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote |
+| **7 — Retrieval Integration** | Skills surfaced through the existing `KnowledgeAPI.assemble_context()` | Skill retrieval respects scope/precondition boundaries |
+| **8 — Staleness & Decay** | Skills lose trust on contradicting evidence or environment drift, not just on schedule | A skill can be automatically downgraded or removed, not just added |
+
+Before starting Phase 1, resolve one open documentation inconsistency: the design source currently defines three overlapping skill-lifecycle state diagrams (§6, §24.3, §24.4) that don't fully reconcile (e.g., `REMOVED` appears in one but not the others). Merge these into one lifecycle with two triggers (environment staleness, evidence-based decay) before it becomes the schema for Phase 3.
+
+---
+
+## Notes on sources
+
+- Codebase claims in this plan were checked directly against `stackmind-main` (package version `2.1.0-dev`, `.sync` runtime stamped `2.0.0`) during this review — not taken from any secondary summary.
+- Design content for Phases 0–8 comes from `StackMind_Verified_Procedural_Learning_FINAL.md`, which went through several rounds of revision in this review; §28 (Phase 0) reflects the final, most-corrected version.
+- Detailed technical mapping and gap analysis is maintained in `docs/PROCEDURAL_LEARNING_TECHNICAL_INVESTIGATION.md`.

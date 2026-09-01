@@ -67,7 +67,7 @@ def acquire_lock(
     session_id: str | int | None = None,
     force: bool = False,
 ) -> tuple[bool, str]:
-    """Acquire the write lock for ``agent``.
+    """Acquire the write lock for ``agent`` with atomic creation to prevent TOCTOU races.
 
     Args:
         sync_path: Path to the .sync/ runtime directory.
@@ -80,9 +80,27 @@ def acquire_lock(
         the lock and ``force`` is not set. Re-acquiring a lock already held by
         the same agent succeeds and refreshes the timestamp.
     """
+    import os
     runtime_dir = sync_path / "runtime"
     if not runtime_dir.is_dir():
         return False, f"runtime directory not found at {runtime_dir}"
+
+    lock_path = get_lock_path(sync_path)
+    lock_data: dict = {
+        "held_by": agent,
+        "session_id": session_id,
+        "acquired_at": _now_iso(),
+    }
+    payload = yaml.dump(lock_data, default_flow_style=False, sort_keys=False).encode("utf-8")
+
+    # Atomic creation attempt (O_CREAT | O_EXCL)
+    try:
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        with os.fdopen(fd, "wb") as f:
+            f.write(payload)
+        return True, f"LOCK acquired by '{agent}'"
+    except FileExistsError:
+        pass  # Lock file already exists; inspect it
 
     existing = read_lock(sync_path)
     stolen = False
@@ -101,15 +119,14 @@ def acquire_lock(
                 stolen = True
                 previous_holder = holder
 
-    lock_data: dict = {
-        "held_by": agent,
-        "session_id": session_id,
-        "acquired_at": _now_iso(),
-    }
-    get_lock_path(sync_path).write_text(
-        yaml.dump(lock_data, default_flow_style=False, sort_keys=False),
-        encoding="utf-8",
-    )
+    # Update/steal existing lock atomically via temporary file and atomic replace
+    tmp_path = lock_path.with_suffix(".tmp")
+    tmp_path.write_bytes(payload)
+    try:
+        os.replace(tmp_path, lock_path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
 
     if stolen:
         receipts_dir = sync_path / "runtime" / "receipts"

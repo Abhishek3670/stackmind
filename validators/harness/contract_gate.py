@@ -61,8 +61,9 @@ def verify_post_execution(
     agent: str,
     task: Any,  # HarnessTask
     decision: Any,  # HarnessDecision
+    observed_files: Any | None = None,  # Sequence[str] | None
 ) -> None:
-    """Post-execution validation: verify decision output (modified files, budget) against contract."""
+    """Post-execution validation: verify decision output and observed changes against contract."""
     contract = load_harness_contract(project_path, agent, task.work_order_id)
     if contract is None:
         return
@@ -71,24 +72,29 @@ def verify_post_execution(
     if contract.is_expired():
         raise ContractExpiredError(f"Contract {contract.work_order} has expired")
         
+    # Authoritative change set: prefer runner-observed changes over LLM claims
+    if observed_files is not None:
+        files_to_check = tuple(str(f) for f in observed_files)
+    else:
+        files_to_check = tuple(str(f) for f in decision.modified_files)
+
     # 1. Check write mode (read-only vs read-write)
-    modified_files = decision.modified_files
-    if modified_files:
+    if files_to_check:
         if contract.write_mode == "read-only":
             raise ContractAccessDenied(
-                f"Contract {contract.work_order} is read-only but decision modified {len(modified_files)} file(s)"
+                f"Contract {contract.work_order} is read-only but {len(files_to_check)} file(s) were modified"
             )
             
     # 2. Check files touched budget
     max_files = contract.budget.get("max_files_touched")
-    if max_files is not None and len(modified_files) > max_files:
+    if max_files is not None and len(files_to_check) > max_files:
         raise ContractAccessDenied(
-            f"Decision modified {len(modified_files)} file(s), exceeding budget max_files_touched limit of {max_files}"
+            f"{len(files_to_check)} file(s) modified, exceeding budget max_files_touched limit of {max_files}"
         )
         
     # 3. Check scope allowed/denied for each modified file
     api = KnowledgeAPI(project_path)
-    for file_path in modified_files:
+    for file_path in files_to_check:
         mod = path_to_module(file_path)
         
         # Deny check
