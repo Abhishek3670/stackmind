@@ -1,6 +1,6 @@
 # AGENTS.md
-Version: v3.0
-Runtime: D021 + D022 + D023.x + D024 + D025 + D031 + KNOW-01 + HARNESS-01 + CONTRACT-01
+Version: v3.1
+Runtime: D021 + D022 + D023.x + D024 + D025 + D031 + KNOW-01 + HARNESS-01 + CONTRACT-01 + LEARN-01
 Authority: CEO → Claude → Gemma → Workers
 Project: stackmind
 
@@ -52,11 +52,11 @@ Never scan all work orders.
 
 At the start of every session, you must read the contract assigned to your work order in `.sync/contracts/<WO-ID>.yaml`. This contract defines your identity, allowed scope, and budget.
 
-10. Query Knowledge API for task context (KNOW-01).
+10. Query Knowledge API for task context (KNOW-01 & LEARN-01).
 
 Use `stackmind graph context` or `stackmind graph query` to understand
 the codebase relevant to assigned work. Do NOT scan source files manually
-when the knowledge store is available. **All queries are structurally checked against your contract.**
+when the knowledge store is available. **All queries are structurally checked against your contract and automatically surface active verified procedural skills.**
 
 ---
 
@@ -118,12 +118,13 @@ Agents must NEVER:
 
 ---
 
-# Authority Model & The Contract Layer (v3.0)
+# Authority Model & The Contract Layer (v3.1)
 
 CEO:
 - product scope
 - priorities
 - releases
+- **High-Risk Skill Approvals**: Grants formal review approval receipts (`stackmind skill approve`) for HIGH and CRITICAL risk procedural skills.
 
 Claude (Architect):
 - architecture
@@ -133,6 +134,7 @@ Claude (Architect):
 - runtime normalization
 - **Repository State Check**: On boot, Claude MUST query the Knowledge Graph (e.g., using `stackmind graph stats` or `stackmind graph context`) to analyze the current state of the repository before making any plans or processing new requests.
 - **Contract generation**: Claude MUST generate a formal YAML contract in `.sync/contracts/WO-xxx.yaml` for every work order delegated to a worker. 
+- **Procedural Learning & Pattern Mining (LEARN-01)**: Claude regularly mines recurring execution clusters (`stackmind learn mine`), reviews candidate manifests (`stackmind skill list --status candidate`), and authorizes `MEDIUM` risk promotions (`stackmind skill promote <name> --actor claude --allow-medium`).
 - **NO IMPLEMENTATION**: Claude is strictly forbidden from writing or editing any application source code. Claude only writes Work Orders and Contracts, then assigns them to Codex. If tasked to build a feature, Claude MUST delegate it.
 
 Gemma (QA):
@@ -140,10 +142,12 @@ Gemma (QA):
 - approvals
 - blocks
 - Reviews diffs against the Contract scope boundary before approval.
+- **Skill Verification & Staleness Audits (LEARN-01)**: Audits active skills for environment/code drift (`stackmind skill audit`) and executes 3-stage verification pipelines (`stackmind skill test`) before release.
 
 Workers (Codex, Gemini):
 - implementation only
 - Must strictly operate within the `allow` scope of their assigned Contract.
+- **Procedural Skill Execution (LEARN-01)**: Workers MUST follow procedural guidance blocks surfaced in prompt context (`ContextBundle.entries` with `reason="procedural_skill"`).
 
 ---
 
@@ -159,6 +163,7 @@ Workers (Codex, Gemini):
 | CLAUDE-02 | "Messages to Dispatch" → "Messages written this session (pending read by recipient)"; unread_inbox_count required | Handoff §Messages |
 | CLAUDE-03 | Session numbering must be cardinal (`session_completed: N`, `next_session_id: N+1`) | Handoff header/footer |
 | **CONTRACT-01** | All workers are bound by a stateful YAML contract defining Identity, Task, Scope, and Budget. Out-of-scope queries/edits will fail closed at the Knowledge API level. | Knowledge API, Harness |
+| **LEARN-01** | Verified Procedural Learning: captures experiences (`EXP-*`), compiles FTS5 cache, mines clusters ($N \ge 3$), verifies via 3-stage pipeline (Structural/Replay/Canary), and gates promotion by risk tier. | Knowledge API, Harness, SkillStore |
 
 ## CONTRACT-01: Agent Governance & The Contract Layer
 
@@ -205,19 +210,20 @@ Before ending session:
 1. Write work output
 2. Write tests
 3. Run `stackmind graph update -p .` if source files were modified (KNOW-01)
-4. Write session report
-5. Write draft snapshot:
+4. Run `stackmind experience compile -p .` if new experiences were recorded (LEARN-01)
+5. Write session report
+6. Write draft snapshot:
 
 .sync/runtime/drafts/<agent>.boot.draft.yaml
 
-6. Write handoffs
-7. Commit work
-8. Record `unread_inbox_count` from TREE.yaml in handoff
-9. Use cardinal session numbering
-10. For delegated actions, include `delegating_agent` field in completed items
-11. For quality metrics, include `commit`, `branch`, `tested_at`; flag unverifiable
-12. Flag any broken local test env as BLOCKED with open BUGFIX WO
-13. **Run `stackmind shutdown <agent>`** — This is the MANDATORY final step.
+7. Write handoffs
+8. Commit work
+9. Record `unread_inbox_count` from TREE.yaml in handoff
+10. Use cardinal session numbering
+11. For delegated actions, include `delegating_agent` field in completed items
+12. For quality metrics, include `commit`, `branch`, `tested_at`; flag unverifiable
+13. Flag any broken local test env as BLOCKED with open BUGFIX WO
+14. **Run `stackmind shutdown <agent>`** — This is the MANDATORY final step.
 
 ---
 
@@ -250,7 +256,7 @@ When preparing context for LLM prompts or understanding a work order:
 stackmind graph context "<work order description>" --token-budget 2000 -p .
 ```
 
-This returns a bounded, ranked, revision-stamped bundle, **strictly filtered by the agent's active Contract scope.** If a request falls outside the `allow` scope or inside a `deny` scope, it is rejected entirely.
+This returns a bounded, ranked, revision-stamped bundle, **strictly filtered by the agent's active Contract scope.** If a request falls outside the `allow` scope or inside a `deny` scope, it is rejected entirely. It also automatically retrieves and injects active verified procedural skills.
 
 ## After Code Changes
 
@@ -259,6 +265,32 @@ Workers MUST update the knowledge store after modifying source:
 ```bash
 stackmind graph update -p .
 ```
+
+---
+
+# Procedural Learning Protocol (LEARN-01)
+
+The Procedural Learning subsystem distills recurring verified executions into reusable procedural skills.
+
+## Agent Learning Operations
+
+| Role | Operation | Command |
+|---|---|---|
+| **Worker (Codex / Gemini)** | Search past experiences | `stackmind experience search "<query>"` |
+| **Worker (Codex / Gemini)** | Inspect retrieved skills | `stackmind skill retrieve "<query>" -c <contract>` |
+| **Architect (Claude)** | Mine pattern clusters | `stackmind learn mine -p .` |
+| **Architect (Claude)** | Review & promote medium-risk skills | `stackmind skill promote <name> --actor claude --allow-medium` |
+| **QA (Gemma)** | Execute 3-stage verification | `stackmind skill test <name>` |
+| **QA (Gemma)** | Audit active skills for drift | `stackmind skill audit -p .` |
+| **CEO / Human** | Authorize high/critical risk skills | `stackmind skill approve <name> -r "<reason>"` |
+
+## Rules
+
+1. **Learning Eligibility Gate**: Experiences are captured ONLY when all 5 verification dimensions pass (`learning_eligible == True`).
+2. **$N \ge 3$ Evidence Gate**: Pattern mining requires at least 3 distinct verified episodes before candidate distillation is permitted.
+3. **3-Stage Verification Requirement**: No skill candidate can be promoted to `ACTIVE` without passing Structural, Historical Replay, and Canary Simulation verification.
+4. **Scope Bounded Retrieval**: Skills whose target modules fall outside an agent's active Contract `allow` scope or inside `deny` scope are strictly excluded from prompt context.
+5. **Dynamic Decay**: Failed executions decay skill confidence (-0.20 per failure). Skills falling below 0.50 confidence are automatically downgraded to `STALE` and excluded from retrieval until revalidated.
 
 ---
 
