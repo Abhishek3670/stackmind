@@ -84,18 +84,12 @@ def build_canonical_change(
     current: dict | None,
     fields: tuple[str, ...] = ("session_count", "tree_version", "graph_version", "release"),
 ) -> dict:
-    """Build a change record describing how a canonical file's fields changed.
-
-    Only fields whose values actually differ are recorded as ``<field>_from`` /
-    ``<field>_to`` pairs. The file path is always included.
-    """
-    previous = previous or {}
-    current = current or {}
-    change: dict = {"file": file_rel}
-    for field in fields:
-        old = previous.get(field)
-        new = current.get(field)
-        if old != new:
-            change[f"{field}_from"] = old
-            change[f"{field}_to"] = new
-    return change
+    """Build a change record describing how a canonical file's fields changed."""
+    prev, curr = previous or {}, current or {}
+    diffs = {
+        f"{field}_{suffix}": val
+        for field in fields
+        if (old := prev.get(field)) != (new := curr.get(field))
+        for suffix, val in (("from", old), ("to", new))
+    }
+    return {"file": file_rel, **diffs}

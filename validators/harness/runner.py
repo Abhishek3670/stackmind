@@ -349,6 +349,14 @@ class AgentRunner:
                 
                 # Execute bash commands after applying ops
                 if decision.commands:
+                    from validators.harness.d025_gate import D025Gate, D025ViolationError
+                    gate = D025Gate()
+                    gate_decision = gate.evaluate_sequence(decision.commands)
+                    gate.log_decision(self.project_path, self.agent, gate_decision, task_id=task.identifier)
+                    if not gate_decision.passed:
+                        raise D025ViolationError(
+                            f"Command sequence triggered D025 Destructive Operations Safeguard: {gate_decision.reason}"
+                        )
                     import subprocess
                     for cmd in decision.commands:
                         subprocess.run(cmd, shell=True, cwd=str(self.project_path), check=True)

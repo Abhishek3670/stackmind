@@ -10,20 +10,7 @@ from pathlib import Path
 from cli.lock import acquire_lock, release_lock
 from validators.knowledge.compiler.ir import CompilerIR, DiagnosticIR, SymbolIR
 from validators.knowledge.compiler.parse import ParsedFile, ParsedSymbol, parse_project
-from validators.knowledge.compiler.pydantic_compiler import augment_parsed_files as augment_pydantic_files
-from validators.knowledge.compiler.fastapi_compiler import augment_parsed_files as augment_fastapi_files
-from validators.knowledge.compiler.sqlalchemy_compiler import augment_parsed_files as augment_sqlalchemy_files
-from validators.knowledge.compiler.django_compiler import augment_parsed_files as augment_django_files
-from validators.knowledge.compiler.celery_compiler import augment_parsed_files as augment_celery_files
-from validators.knowledge.compiler.alembic_compiler import augment_parsed_files as augment_alembic_files
-from validators.knowledge.compiler.doc_compiler import augment_parsed_files as augment_doc_files
-from validators.knowledge.compiler.config_compiler import augment_parsed_files as augment_config_files
-from validators.knowledge.compiler.cicd_compiler import augment_parsed_files as augment_cicd_files
-from validators.knowledge.compiler.test_compiler import augment_parsed_files as augment_test_files
-from validators.knowledge.compiler.cycle_compiler import augment_parsed_files as augment_cycle_files
-from validators.knowledge.compiler.dead_code_compiler import augment_parsed_files as augment_dead_code_files
-from validators.knowledge.compiler.health_compiler import augment_parsed_files as augment_health_files
-from validators.knowledge.compiler.impact_compiler import augment_parsed_files as augment_impact_files
+from validators.knowledge.compiler.resolve import run_all_augmenters
 from validators.knowledge.projections import build_projections
 from validators.knowledge.projections.reverse_index import lookup_reverse_edges
 from validators.knowledge.registry import SymbolRegistry, birth_key, node_id_for
@@ -94,20 +81,7 @@ def incremental_update(
 
     old_ir = read_ir(project_path)
     parsed_files = parse_project(project_path)
-    augment_pydantic_files(parsed_files)
-    augment_fastapi_files(parsed_files)
-    augment_sqlalchemy_files(parsed_files)
-    augment_django_files(parsed_files)
-    augment_celery_files(parsed_files)
-    augment_alembic_files(parsed_files)
-    augment_doc_files(parsed_files, project_path=project_path)
-    augment_config_files(parsed_files, project_path=project_path)
-    augment_cicd_files(parsed_files, project_path=project_path)
-    augment_test_files(parsed_files, project_path=project_path)
-    augment_cycle_files(parsed_files, project_path=project_path)
-    augment_dead_code_files(parsed_files, project_path=project_path)
-    augment_health_files(parsed_files, project_path=project_path)
-    augment_impact_files(parsed_files, project_path=project_path)
+    run_all_augmenters(parsed_files, project_path=project_path)
     parsed_by_path = {item.path: item for item in parsed_files}
     current_paths = set(parsed_by_path)
     old_symbols = old_ir.symbols

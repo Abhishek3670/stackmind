@@ -1,268 +1,143 @@
 # StackMind
 
-> **Know your codebase before you touch it.**
+> **Compiler-Backed Multi-Agent Engineering Runtime**
 
-StackMind compiles your Python source into a persistent, queryable knowledge graph. Ask "who calls this function?", "what breaks if I rename it?", or "give me context for this task" — and get instant answers without scanning files.
+StackMind compiles your codebase into a persistent, queryable knowledge graph. Ask *"who calls this function?"*, *"what breaks if I rename it?"*, *"what data flows from request into SQL query?"*, or *"give me context for this task"* — and get instant, provenance-tracked answers without scanning files.
+
+StackMind is also an operating system for teams of AI agents working on a shared software project. It provides three integrated pillars: **Runtime Governance & Contract Layer** (`CONTRACT-01`), **Knowledge Compiler & Graph Intelligence** (`KNOW-01`), and a **Governed Harness Runtime** (`HARNESS-01`).
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Version: 3.0.0](https://img.shields.io/badge/version-3.0.0-blue.svg)](VERSION.md)
+[![Tests: 396 Passing](https://img.shields.io/badge/tests-396%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## Why?
+## The Three Pillars
 
-Every time an AI agent (or a developer) opens a project, they rebuild their understanding from scratch — reading files, grepping, guessing. StackMind compiles that understanding once and makes it queryable forever.
+```text
+                         STACKMIND PLATFORM
+                                 │
+        ┌────────────────────────┼────────────────────────┐
+        ▼                        ▼                        ▼
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│     Pillar 1     │   │     Pillar 2     │   │     Pillar 3     │
+│Runtime Governance│   │Knowledge Compiler│   │ Harness Runtime  │
+│  & Contract Layer│   │ & Graph Intel    │   │  & Verification  │
+│ (v1.2 + v3.0)    │   │ (v2.0 + POC)     │   │ (v2.0 + v3.0)    │
+└──────────────────┘   └──────────────────┘   └──────────────────┘
+```
 
-```
-Before: grep -r "my_function" . | read 20 files | guess what breaks
-After:  stackmind graph callers "my_function"  →  instant answer
-```
+1. **Runtime Governance & Contract Layer (`CONTRACT-01`):** Stateful YAML contracts restricting worker agents to strict `allow`/`deny` module boundaries with token & file budgets.
+2. **Knowledge Compiler & Code-Graph Intelligence (`KNOW-01`):** Deterministic AST source-to-IR compilation, 14 domain compilers (FastAPI, Pydantic, SQLAlchemy, etc.), runtime call tracing (`sys.setprofile`), and data-flow taint tracking (`FLOWS_TO`).
+3. **Harness Runtime (`HARNESS-01`):** Governed execution runner coordinating LLM agent tasks with contract pre-flight gates, schema verification, and `D025` destructive safeguards.
 
 ---
 
 ## Quick Start
 
-```bash
-# Install
-pip install stackmind
+### Standalone Knowledge Graph (Zero Config)
 
-# Point it at any Python project
-stackmind graph build -p /path/to/your/project
-
-# Query — no file scanning required
-stackmind graph query "my_function" -p /path/to/your/project
-stackmind graph callers "my_function" -p /path/to/your/project
-stackmind graph impact "my_function" --depth 3 -p /path/to/your/project
-```
-
-That's it. No config, no init, no setup. Works on any Python project.
-
----
-
-## What Can It Do?
-
-### Find symbols instantly
+Point StackMind at any Python project — no configuration required:
 
 ```bash
-$ stackmind graph query "echo" -p ./click
-results: 1
-- Function echo [FUNC-...] src/click/utils.py confidence=1.0
+# 1. Compile entire project into deterministic knowledge store
+stackmind graph build -p /path/to/project
+
+# 2. Query symbols without scanning files
+stackmind graph query "AuthService.login" -p /path/to/project
+
+# 3. Discover callers (static + runtime confirmed)
+stackmind graph callers "AuthService.login" -p /path/to/project
+
+# 4. Impact analysis for refactoring
+stackmind graph impact "AuthService.login" --depth 3 -p /path/to/project
+
+# 5. Assemble bounded, ranked context for an LLM prompt
+stackmind graph context "How does user authentication work?" --token-budget 2000 -p /path/to/project
 ```
 
-### Who calls this?
+### Multi-Agent Governance Workspace
+
+Initialize a governed multi-agent workspace:
 
 ```bash
-$ stackmind graph callers "echo" -p ./click
-results: 18
-- Method Command.invoke src/click/core.py
-- Function secho src/click/termui.py
-- Method ClickException.show src/click/exceptions.py
-- ...
-```
+# 1. Initialize runtime
+stackmind init ./my-project --name "My App"
 
-### What breaks if I change it?
-
-```bash
-$ stackmind graph impact "echo" --depth 3 -p ./click
-results: 29
-- Method Command.invoke → Command.__call__ → ...
-- Function confirm → prompt → prompt_func → ...
-```
-
-### Assemble context for an LLM prompt
-
-```bash
-$ stackmind graph context "How does Click handle routing?" --token-budget 2000 -p ./click
-token_budget: 2000
-estimated_tokens: 155
-truncated: False
-[Method] Path.__init__ ...
-[Class] CliRunner ...
-```
-
-Returns a bounded, ranked bundle with provenance — ready to paste into an agent prompt.
-
-### Framework Intelligence Compilers (Phase 1)
-
-StackMind includes specialized AST compilers that statically map Python web & data frameworks:
-
-- ⚡ **Pydantic**: Model definitions, field constraints, type validation graphs
-- 🚀 **FastAPI**: Endpoint routes, path params, auth dependencies, middleware mapping
-- 🗄️ **SQLAlchemy**: ORM models, foreign keys, 1-to-N relationships, schema graphs
-- 🎯 **Django**: URL routing, views, models, `@receiver` signals, middleware
-- ⚡ **Celery**: Asynchronous tasks, queues, periodic beat schedules, `.delay()`/`.apply_async()` invocation flows
-- 📜 **Alembic**: Migration DAG history, schema operations (`op.create_table`), point-in-time schema reconstruction (`--at <rev>`)
-
----
-
-## Commands
-
-| Command | What It Does |
-|---------|-------------|
-| `graph build -p .` | Compile entire project into knowledge store |
-| `graph update -p .` | Incremental update (only changed files) |
-| `graph query "name"` | Find symbols by name, kind, or path |
-| `graph callers "symbol"` | Direct callers of a symbol |
-| `graph impact "symbol"` | Transitive impact analysis |
-| `graph context "question"` | Assemble bounded context for LLM prompts |
-| `graph explain "symbol"` | Show callers + callees of a symbol |
-| `graph stats` | Node/edge/revision counts |
-| `graph watch` | File watcher — auto-recompile on save |
-| **Framework Intelligence** | |
-| `graph models` | List Pydantic models & validation schemas |
-| `graph routes` | List FastAPI routes & endpoints |
-| `graph auth` | List FastAPI auth dependencies |
-| `graph middleware` | List FastAPI middleware registrations |
-| `graph schema` | Show SQLAlchemy schema graph or Alembic state (`--at <rev>`) |
-| `graph relations` | Show SQLAlchemy ORM model relationships |
-| `graph django-urls` | List Django URL patterns & routing |
-| `graph django-signals` | List Django signal handlers & sender wiring |
-| `graph tasks` | List Celery tasks & periodic beat schedules |
-| `graph task-flow` | Map caller code to asynchronous task execution |
-| `graph migrations` | List Alembic migration history DAG sequentially |
-
----
-
-## How It Works
-
-```
-Source (.py files)
-    │
-    ▼
-┌────────────────────┐
-│  LibCST Parser     │  Full-fidelity AST
-└────────────────────┘
-    │
-    ▼
-┌────────────────────┐
-│  Jedi Resolver     │  Cross-file symbol resolution
-└────────────────────┘
-    │
-    ▼
-┌────────────────────┐
-│  Deterministic IR  │  Byte-identical across runs
-└────────────────────┘
-    │
-    ▼
-┌────────────────────┐
-│  Storage Layer     │  Sharded JSON, atomic writes
-└────────────────────┘
-    │
-    ▼
-┌────────────────────┐
-│  Projections       │  Reverse index, search, metrics
-└────────────────────┘
-    │
-    ▼
-┌────────────────────┐
-│  Knowledge API     │  Query, callers, impact, context
-└────────────────────┘
-```
-
-**Key properties:**
-- **Deterministic** — same source → byte-identical output. No RNG, no timestamps, no absolute paths.
-- **Incremental** — change one file → only affected symbols recompile.
-- **Rename-safe** — NodeIDs survive renames/moves via alias detection.
-- **Crash-safe** — atomic writes (temp + `os.replace()`). Never half-written.
-
----
-
-## Multi-Agent Runtime (Advanced)
-
-StackMind also includes a full multi-agent coordination runtime for teams of AI agents:
-
-```bash
-# Initialize a governed project
-stackmind init ./my-project --name "My Project"
-
-# Validate runtime health
+# 2. Validate runtime health and structure
 stackmind validate ./my-project
 
-# Run governed agent execution
-stackmind harness run-once codex -p .
+# 3. System diagnostics & version compatibility
+stackmind doctor ./my-project
+
+# 4. Run governed agent execution cycle
+stackmind harness run-once codex -p ./my-project
 ```
 
-Features:
-- Agent messaging (inbox/outbox)
-- Work order management (ACTIVE → BLOCKED → COMPLETED)
-- Boot snapshots (session continuity)
-- Write locks (no clobbered state)
-- 5-layer validation
-- Governed execution with verification gates
+---
 
-See [STACKMIND.md](STACKMIND.md) for full architecture documentation.
-See [AGENTS.md](AGENTS.md) for agent protocols and authority model.
+## CLI Reference
+
+| Command | Subcommands / Options | Description |
+|---|---|---|
+| `stackmind init` | `[path] [--name] [--agents]` | Initializes a governed runtime with `.sync/` and isolated `.gitignore` |
+| `stackmind validate` | `[path] [--fix]` | Executes 5-layer runtime integrity and consistency validation |
+| `stackmind doctor` | `[path]` | System diagnostics, version alignment, and agent health |
+| `stackmind graph` | `build`, `update`, `query`, `callers`, `impact`, `context`, `stats`, `watch` | Builds and queries the deterministic knowledge store |
+| `stackmind graph contract` | `show`, `validate`, `explain-denial`, `scope` | Inspects and debugs agent contracts and scope boundaries |
+| `stackmind analyze` | `runtime`, `flows` | Executes runtime call tracing and data-flow taint analysis |
+| `stackmind harness` | `run-once` | Executes a governed agent task execution cycle |
+| `stackmind lock` | `acquire`, `release`, `status` | Advisory write lock for serializing canonical writes |
+| `stackmind shutdown` | `<agent> [--defer] [--force]` | Terminate agent session with pre-flight handoff verification |
+| `stackmind promote` | `<agent>` | Promotes a worker draft snapshot to canonical with validation |
+| `stackmind migrate` | `[path] [--check] [--rollback]` | Executes version upgrades using YAML manifests |
+
+---
+
+## Architecture & Storage Model
+
+```text
+.sync/
+├── knowledge/
+│   ├── registry/           # T0 — Canonical symbol identity (birth-hashes, never deleted)
+│   ├── nodes/              # T1 — Deterministic node documents (sharded JSON)
+│   ├── revisions/          # T1 — Monotonic revision chain
+│   └── cache/              # T2 — Derived projections (reverse index, search, vector cache)
+├── contracts/              # CONTRACT-01 scope boundaries & budgets (YAML)
+├── work-orders/            # Persistent task lifecycles (ACTIVE, BLOCKED, COMPLETED)
+├── runtime/                # Canonical TREE.yaml, boot snapshots, receipts, write lock
+└── inbox/ & outbox/        # Structured inter-agent communication channels
+```
 
 ---
 
 ## Installation
 
-### From source
-
-```bash
-git clone https://github.com/stackmind/stackmind.git
-cd stackmind
-pip install -e .
-```
-
 ### Requirements
-
 - Python ≥ 3.10
-- Dependencies: `click`, `libcst`, `jedi`, `pyyaml`, `jsonschema`, `rich`
+- Core dependencies: `click`, `libcst`, `jedi`, `pyyaml`, `jsonschema`, `rich`
 
----
-
-## Examples
-
-### Compile the Click framework
+### From Source
 
 ```bash
-git clone --depth 1 https://github.com/pallets/click /tmp/click
-stackmind graph build -p /tmp/click
-
-# Result: 1925 nodes, 6300 edges, compiled in seconds
-```
-
-### Find all callers of a function
-
-```bash
-stackmind graph callers "echo" -p /tmp/click
-# 18 callers across 7 files — instant, no grep
-```
-
-### Prepare context for an AI agent
-
-```bash
-stackmind graph context "What would break if I rename echo?" --token-budget 1500 -p /tmp/click
-# Returns ranked symbols + call relationships within token budget
+git clone https://github.com/Abhishek3670/stackmind.git
+cd stackmind
+pip install -e ".[dev]"
 ```
 
 ---
 
-## Project Structure
+## Documentation Links
 
-```
-stackmind/
-├── cli/                    # CLI commands (Click)
-│   ├── main.py            # Entry point
-│   ├── graph.py           # Knowledge graph commands
-│   └── harness.py         # Agent runner
-├── validators/
-│   ├── knowledge/         # Knowledge Compiler
-│   │   ├── compiler/      # parse, resolve, ir, incremental, rename
-│   │   ├── projections/   # reverse_index, search, metrics
-│   │   ├── api.py         # Knowledge API
-│   │   ├── registry.py    # Symbol Registry
-│   │   ├── storage.py     # Node storage
-│   │   └── enricher.py    # Async LLM enrichment
-│   └── harness/           # Agent Runner
-├── schemas/               # JSON Schema definitions
-├── tests/                 # 304 tests
-└── docs/                  # Architecture & RFCs
-```
+- **Complete Architecture Handbook**: [STACKMIND.md](STACKMIND.md)
+- **Agent Governance & Rules**: [AGENTS.md](AGENTS.md)
+- **Interactive Architecture Explorer**: [StackMind_Interactive_Architecture.html](StackMind_Interactive_Architecture.html)
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
+- **Version Overview**: [VERSION.md](VERSION.md)
 
 ---
 
 ## License
 
-MIT — [Abhishek Sharma](https://github.com/stackmind)
+MIT — [Abhishek Sharma](https://github.com/Abhishek3670/stackmind)

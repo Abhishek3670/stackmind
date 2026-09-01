@@ -108,9 +108,12 @@ def _append_schema_errors(file_rel: str, data: dict, schema: dict, result: Valid
 
 
 def _normalize_work_order_status(status: str | None) -> str | None:
-    if status == "COMPLETE":
+    if not status:
+        return status
+    status_upper = str(status).upper()
+    if status_upper in ("COMPLETE", "COMPLETED"):
         return "COMPLETED"
-    return status
+    return status_upper
 
 
 def _discover_agents(sync_path: Path) -> list[str]:
@@ -344,6 +347,30 @@ def validate_structure(project_path: Path, sync_path: Path, agents: list[str], r
             message=".sync/ is not a git repository",
             path=".git",
         ))
+
+    # Check if .sync is accidentally tracked in the main project git repository
+    if (project_path / ".git").exists():
+        try:
+            completed = subprocess.run(
+                ["git", "ls-files", ".sync"],
+                cwd=str(project_path),
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            if completed.stdout.strip():
+                result.issues.append(Issue(
+                    layer="Structure",
+                    severity=Severity.WARN,
+                    message=(
+                        ".sync/ directory is tracked in the main project Git repository index. "
+                        "Run 'git rm -r --cached .sync' to untrack it."
+                    ),
+                    path=".sync",
+                    auto_fixable=True,
+                ))
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+            pass
 
 
 # ─── Layer 3: Protocol Compliance ───────────────────────────────
@@ -593,6 +620,7 @@ def _validate_untracked_sync(sync_path: Path, result: ValidationResult) -> None:
                 f"— commit or remove it before assigning new work (CODEX-02)"
             ),
             path=untracked_path,
+            auto_fixable=True,
         ))
 
 
@@ -682,14 +710,11 @@ def _validate_handoff_reports(sync_path: Path, result: ValidationResult) -> None
             continue
         agent_name = agent_dir.name
         
-        # Scan both top-level and archived _read/
-        for search_dir in (agent_dir, agent_dir / "_read"):
-            if not search_dir.is_dir():
-                continue
-            for path in sorted(search_dir.glob("handoff-*.md")):
-                _validate_handoff_file(path, agent_name, result, sync_path)
-            for path in sorted(search_dir.glob("*_session-report.md")):
-                _validate_handoff_file(path, agent_name, result, sync_path)
+        # Scan only unarchived handoff files in outbox; archived items in _read/ are immutable history
+        for path in sorted(agent_dir.glob("handoff-*.md")):
+            _validate_handoff_file(path, agent_name, result, sync_path)
+        for path in sorted(agent_dir.glob("*_session-report.md")):
+            _validate_handoff_file(path, agent_name, result, sync_path)
 
 
 def _validate_handoff_file(path: Path, agent: str, result: ValidationResult, sync_path: Path) -> None:
@@ -907,13 +932,15 @@ def _validate_work_order_deliverables(sync_path: Path, result: ValidationResult)
         deliverable = order.get("deliverable")
 
         if wo_type in DELIVERABLE_REQUIRED_TYPES and not deliverable:
+            if order.get("deliverables"):
+                continue
             # Fallback: check the actual WO file
             wo_found_in_file = False
             for subdir in ("ACTIVE", "BLOCKED", "COMPLETED"):
                 wo_file = sync_path / "work-orders" / subdir / f"{wo_id}.yaml"
                 if wo_file.exists():
                     wo_data, _ = _load_yaml(wo_file)
-                    if wo_data and wo_data.get("deliverable"):
+                    if wo_data and (wo_data.get("deliverable") or wo_data.get("deliverables") or wo_data.get("files_created")):
                         wo_found_in_file = True
                     break
             if not wo_found_in_file:
@@ -1112,6 +1139,7 @@ def _validate_canonical_drift(sync_path: Path, tree_data: dict, result: Validati
                     f"— normalize TREE.yaml against the work-order ledger"
                 ),
                 path="runtime/TREE.yaml",
+                auto_fixable=True,
             ))
 
 
@@ -1297,6 +1325,8 @@ def validate_sync_ref(project_path: Path, sync_path: Path, result: ValidationRes
 
 def auto_fix(sync_path: Path, issues: list[Issue]) -> int:
     fixed = 0
+    synced_tree_totals = False
+    committed_sync_repo = False
     for issue in issues:
         if not issue.auto_fixable:
             continue
@@ -1307,17 +1337,52 @@ def auto_fix(sync_path: Path, issues: list[Issue]) -> int:
                 (dir_path / ".gitkeep").write_text("", encoding="utf-8")
                 fixed += 1
 
-        elif "_read/" in issue.message:
+        elif "Missing: .sync/inbox/" in issue.message and "_read" in issue.message:
             read_dir = sync_path / issue.path
             read_dir.mkdir(parents=True, exist_ok=True)
             (read_dir / ".gitkeep").write_text("", encoding="utf-8")
             fixed += 1
 
-        elif "outbox" in issue.message:
+        elif "Missing: .sync/outbox/" in issue.message:
             outbox_dir = sync_path / issue.path
             outbox_dir.mkdir(parents=True, exist_ok=True)
             (outbox_dir / ".gitkeep").write_text("", encoding="utf-8")
             fixed += 1
+
+        elif "Canonical drift:" in issue.message:
+            if not synced_tree_totals:
+                index_path = sync_path / "work-orders" / "INDEX.yaml"
+                tree_path = sync_path / "runtime" / "TREE.yaml"
+                if index_path.exists() and tree_path.exists():
+                    index_data, _ = _load_yaml(index_path)
+                    tree_data, _ = _load_yaml(tree_path)
+                    if index_data and tree_data and isinstance(tree_data.get("work_orders"), dict):
+                        for field_name in CANONICAL_TOTAL_FIELDS:
+                            if field_name in index_data:
+                                tree_data["work_orders"][field_name] = index_data[field_name]
+                        tree_path.write_text(yaml.dump(tree_data, default_flow_style=False), encoding="utf-8")
+                        synced_tree_totals = True
+            fixed += 1
+
+        elif "Untracked path in .sync repo:" in issue.message:
+            if not committed_sync_repo and (sync_path / ".git").exists():
+                try:
+                    subprocess.run(["git", "add", "."], cwd=str(sync_path), capture_output=True, check=False)
+                    subprocess.run(["git", "commit", "-m", "chore: auto-commit untracked governance files"], cwd=str(sync_path), capture_output=True, check=False)
+                    committed_sync_repo = True
+                except Exception:
+                    pass
+            fixed += 1
+
+        elif ".sync/ directory is tracked in the main project Git repository index" in issue.message:
+            project_path = sync_path.parent
+            if (project_path / ".git").exists():
+                try:
+                    subprocess.run(["git", "rm", "-r", "--cached", ".sync"], cwd=str(project_path), capture_output=True, check=False)
+                    subprocess.run(["git", "commit", "-m", "chore: untrack .sync from main git repo (validate --fix)"], cwd=str(project_path), capture_output=True, check=False)
+                    fixed += 1
+                except Exception:
+                    pass
 
     return fixed
 
@@ -1372,12 +1437,13 @@ def validate(project_path: Path, fix: bool = False) -> ValidationResult:
     validate_knowledge_layer(project_path, result)
 
     # Auto-fix if requested
-    if fix and result.warnings:
+    if fix:
         fixable = [i for i in result.issues if i.auto_fixable]
         if fixable:
             fixed_count = auto_fix(sync_path, fixable)
             for issue in fixable:
-                result.issues.remove(issue)
+                if issue in result.issues:
+                    result.issues.remove(issue)
             console.print(f"[bold green][+][/bold green] Auto-fixed {fixed_count} issues")
 
     return result

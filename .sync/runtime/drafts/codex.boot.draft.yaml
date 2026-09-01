@@ -1,0 +1,23 @@
+schema_version: 1
+agent: codex
+role: "Backend Developer"
+session_count: 15
+current_phase: "ACTIVE"
+phase_status: "ACTIVE"
+release: "2.1.0-dev"
+last_completed_task: "WO-040 CBM Dependency Evaluation Report delivered and submitted for review"
+next_action: "Await Gemma review on WO-040."
+blockers: []
+assigned_work_orders:
+  - "WO-040"
+dependencies: []
+unread_inbox_count: 0
+last_seen_decision: "D-004"
+tree_version: 14
+graph_version: null
+notes:
+  - "Draft only. Canonical snapshot publication is owned by Claude."
+  - "WO-040 CBM Dependency Evaluation Report produced at docs/cbm-evaluation-report.md."
+  - "License verified as MIT, determinism proven, schema inventory documented, supply-chain verified."
+last_updated: "2026-08-22T02:44:00+05:30"
+updated_by: "codex"

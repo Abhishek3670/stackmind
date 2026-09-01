@@ -1,24 +1,23 @@
 active_dependencies: []
 agents:
   claude:
-    assigned_work_orders:
-    - WO-036
-    - WO-037
+    assigned_work_orders: []
     blockers: []
     boot_version: v1.0
     last_task: Session ended via shutdown
-    next_task: Await Codex completion of WO-036, Local-LLM completion of commit +
-      WO-037
-    session_count: 3
+    next_task: Await Codex & Gemma completion of WO-040, Local-LLM commit of WO-036
+      + execution of WO-038/039
+    session_count: 4
     status: idle
   codex:
     assigned_work_orders:
-    - WO-036
+    - WO-040
     blockers: []
     boot_version: v1.0
     last_task: Session ended via shutdown
-    next_task: Implement WO-036 (scope-violation E2E test + D025 gate)
-    session_count: 8
+    next_task: 'Execute WO-040 (Phase 1: Prove CBM Dependency - License, Determinism,
+      Schema, Supply-Chain)'
+    session_count: 14
     status: idle
   gemini:
     assigned_work_orders: []
@@ -29,22 +28,23 @@ agents:
     session_count: 0
     status: idle
   gemma:
-    assigned_work_orders: []
+    assigned_work_orders:
+    - WO-040
     blockers: []
     boot_version: v1.0
     last_task: Session ended via shutdown
-    next_task: Await next review assignment
-    session_count: 6
+    next_task: Collaborate on / Review WO-040 evaluation
+    session_count: 18
     status: idle
   local-llm:
     assigned_work_orders:
-    - WO-037
     - WO-038
     - WO-039
     blockers: []
     boot_version: v1.0
     last_task: Session ended via shutdown
-    next_task: Commit code cleanups (DEFAULT_EXCLUDED_DIRS consolidation)
+    next_task: Commit WO-036 changes, execute WO-038 (version alignment & branch cleanup)
+      and WO-039 (docs archive)
     session_count: 2
     status: idle
 compliance:
@@ -52,30 +52,30 @@ compliance:
   gemini: COMPLIANT
   gemma: COMPLIANT
   local-llm: COMPLIANT
-current_phase: COMPLETE
+current_phase: ACTIVE
 decisions_pending: []
 graph_version: null
 inbox_unread:
   claude: 0
-  codex: 3
+  codex: 1
   gemini: 0
   gemma: 0
-  local-llm: 1
-last_updated: '2026-08-19T13:00:35.220370+00:00'
+  local-llm: 3
+last_updated: '2026-08-21T21:32:49.540514+00:00'
 latest_decision: D-004
 latest_decision_title: "Gemma Contract Hardening \u2014 Dependency Manifest Gate +\
   \ Secret-Scan Gate (Q1+Q2)"
-phase_status: SHIPPED
+phase_status: ACTIVE
 quality:
-  backend_coverage: 83%
+  backend_coverage: 87%
   build_status: GREEN
   frontend_coverage: not-run
-  tests_passing: '386'
+  tests_passing: '390'
 release: 2.1.0-dev
 schema_version: 1
 tree_version: 14
 work_orders:
   index_file: work-orders/INDEX.yaml
-  total_active: 4
-  total_blocked: 0
-  total_completed: 35
+  total_active: 3
+  total_blocked: 3
+  total_completed: 37

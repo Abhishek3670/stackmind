@@ -11,45 +11,43 @@
 
 ## Executive Summary
 
-StackMind currently uses a Python-native frontend (LibCST + Jedi) to compile Python source code into a deterministic, queryable knowledge graph.
+StackMind's Knowledge Compiler currently produces deterministic IR for Python only, via LibCST + Jedi.
 
-To support multi-language environments without rewriting parsers and Hybrid LSPs from scratch, we are integrating `codebase-memory-mcp` (CBM). CBM is a mature C binary that supports 158+ languages. 
-
-**Core Decision:** We will use CBM strictly as a dumb data pipeline. We will ingest its output and force it through StackMind's native `birth_key()` hashing. This guarantees that StackMind's core IR, identity model, and Contract/Governance layer remain 100% deterministic and unaffected by the underlying parser.
+To support additional languages without rewriting parsers and Hybrid LSPs from scratch, we are integrating **`cbm` (Codebase-Memory)** as a Tree-sitter-backed multi-language adapter (`CbmCompiler`). We will use it strictly as a dumb data pipeline: ingest its output and force it through StackMind's native `birth_key()` hashing. This guarantees StackMind's core IR, identity model, and Contract/Governance layer remain 100% deterministic and unaffected by the underlying parser — regardless of what Phase 1 finds about `cbm` itself.
 
 ---
 
 ## 0. Prerequisites (Critical Sequencing)
 
-**This plan is BLOCKED until docs/archive/PLANv4.md Phase 1.7 is complete.**
+**This plan is BLOCKED until WO-036 (Scope-Violation E2E Test & D025 Code Enforcement) passes Gemma QA.**
 
-Phase 1.7 covers the scope-violation end-to-end test and D025 code enforcement (specifically addressing Risk 1: Transactional Safety and Split-Brain scenarios defined in `docs/archive/PLANv4.md`). Adding multi-language surface area before the Dual-Repo governance layer's open gaps are closed means every new language inherits those transactional vulnerabilities. We must close those holes first so that every new language inherits a governance layer that is complete and transactionally safe across both repositories.
+WO-036 seals the Dual-Repo governance layer — the contract-scope integration test (in-scope Knowledge API queries and harness edits succeed; out-of-scope or denied ones fail closed with structured audit logging) and the `d025_gate.py` destructive-operations gate (backup + post-execution verification before high-risk ops). Adding multi-language surface area before this closes means every new language would inherit the same transactional and scope-boundary gaps. Once WO-036 clears Codex → Gemma review, this plan unblocks.
 
 ---
 
 ## Phase 1 — Prove the Dependency
 
-Before writing any adapter code, we must verify the dependency is safe and viable.
+Before writing any adapter code, verify `cbm` is safe and viable to depend on. Nothing about its license, determinism, or provenance should be assumed going in.
 
 1. **Read the actual LICENSE file**: Confirm the core binary is MIT or compatible.
-2. **Determinism test**: Index a fixture repo twice in `full` mode. Diff the resulting output byte-for-byte. If it is not perfectly deterministic, we must fallback to Advisory Mode.
+2. **Determinism test**: Index a fixture repo twice in `full` mode. Diff the resulting output byte-for-byte. If it is not perfectly deterministic, fall back to Advisory Mode (Phase 4).
 3. **Schema inventory**: Document the SQLite schema/JSON output fields available per node/edge to define the adapter's input contract.
 4. **Supply-chain check**: Confirm signed/checksummed releases are verifiable.
 
-**Exit Gate:** License confirmed, determinism verified, schema documented, binary provenance verified.
+**Exit Gate:** License confirmed, determinism verified (or Advisory Mode confirmed as fallback), schema documented, binary provenance verified.
 
 ---
 
-## Phase 2 — `TreeSitterFrontend` Adapter
+## Phase 2 — `CbmCompiler` Adapter
 
-Implement the `CompilerFrontend` interface for non-Python languages using CBM.
+Implement the `CompilerFrontend` interface for non-Python languages using `cbm`, joining the existing 14 domain compilers.
 
-1. **`discover_files`**: Delegate to CBM's own discovery (respects `.gitignore`).
-2. **`parse` / `resolve`**: Shell out to `codebase-memory-mcp index <path> --mode full --json`.
-3. **`emit_ir` (The Real Work)**: Translate CBM's raw records into StackMind's IR by running them through `birth_key()`. CBM's internal node IDs are ignored.
-4. **Edge Mapping**: Map CBM's CALLS / RESOLVED_CALLS / import edges onto StackMind's existing edge kinds. Unmapped edges are logged, not dropped.
+1. **`discover_files`**: Delegate to `cbm`'s own discovery (respects `.gitignore`).
+2. **`parse` / `resolve`**: Shell out to `cbm index <path> --mode full --json`.
+3. **`emit_ir` (The Real Work)**: Translate `cbm`'s raw records into StackMind's IR by running them through `birth_key()`. `cbm`'s internal node IDs are ignored — StackMind mints its own.
+4. **Edge Mapping**: Map `cbm`'s CALLS / RESOLVED_CALLS / import edges onto StackMind's existing edge kinds. Unmapped edges are logged, not dropped.
 
-**Exit Gate:** TypeScript compiles through the adapter into valid StackMind IR with correctly minted birth-hash IDs.
+**Exit Gate:** A real TypeScript file compiles through the adapter into valid StackMind IR with correctly minted birth-hash IDs.
 
 ---
 
@@ -57,23 +55,20 @@ Implement the `CompilerFrontend` interface for non-Python languages using CBM.
 
 StackMind must remain a zero-dependency Python installation for users working on pure Python projects.
 
-1. **Lazy Prerequisite**: `stackmind` detects the absence of the CBM binary and fails with a clear install instruction *only* when a non-Python language is actually encountered in the repository.
+1. **Lazy Prerequisite**: `stackmind` detects the absence of the `cbm` binary and fails with a clear install instruction *only* when a non-Python language is actually encountered in the repository.
 
 ---
 
-## Phase 4 — Determinism Fallback (Optional)
+## Phase 4 — Determinism Fallback (Conditional)
 
-If the determinism check in Phase 1 fails (CBM cannot give byte-identical output across runs):
-1. Use CBM in read-only, best-effort mode.
+Triggers only if the Phase 1 determinism check fails (i.e., `cbm` cannot give byte-identical output across runs). Not a sequential phase everyone passes through.
+
+1. Use `cbm` in read-only, best-effort mode.
 2. Explicitly tag its IR output as `advisory: true` rather than `verified: true`.
-3. StackMind's strict determinism guarantees will continue to apply only to the Python frontend's output.
+3. StackMind's strict determinism guarantees continue to apply only to the Python frontend's output.
 
 ---
 
-## Immediate Next Actions
+## Note
 
-0. **Prerequisite**: Complete docs/archive/PLANv4.md Phase 1.7 (scope-violation E2E test and D025 enforcement) to seal the governance layer.
-1. **Phase 1 (Prove Dependency)**: Run determinism, license, schema, and supply-chain checks on `codebase-memory-mcp`.
-2. **Phase 2 (TreeSitterFrontend)**: Build the Python adapter for the CBM binary.
-3. **Phase 3 (Packaging)**: Implement lazy installation logic.
-4. **Do NOT commit changes yet** (per CEO directive).
+Do NOT commit changes yet (per CEO directive) — applies for the duration of this plan, not just its first step.
