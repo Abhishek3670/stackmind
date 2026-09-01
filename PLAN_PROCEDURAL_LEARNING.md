@@ -97,7 +97,7 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 | **2 — Experience Compilation** | Rebuildable T2-style SQLite/FTS index over experience records, following StackMind's existing "rebuildable derived cache" pattern rather than a new source of truth | Index rebuilds cleanly from raw records | **DONE** (`v3.1.0+`) |
 | **3 — Skill Storage & Versioning** | `SKILL-` kind registered in the symbol registry; versioned storage with rollback | A skill can be created, versioned, and rolled back via CLI | **DONE** (`v3.1.0+`) |
 | **4 — Pattern Mining** | Cluster recurring verified episodes into skill candidates | Candidates generated only from Learning-eligible history | **DONE** (`v3.1.0+`) |
-| **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three | PENDING |
+| **5 — Verification Pipeline (Replay / Canary)** | Structural → replay → canary checks before promotion | A skill candidate cannot be promoted without passing all three | **DONE** (`v3.1.0+`) |
 | **6 — Risk-Tiered Promotion** | Promotion autonomy scales inversely with consequence | High-risk changes require human review; low-risk can auto-promote | PENDING |
 | **7 — Retrieval Integration** | Skills surfaced through the existing `KnowledgeAPI.assemble_context()` | Skill retrieval respects scope/precondition boundaries | PENDING |
 | **8 — Staleness & Decay** | Skills lose trust on contradicting evidence or environment drift, not just on schedule | A skill can be automatically downgraded or removed, not just added | PENDING |
@@ -142,6 +142,16 @@ Confirmed by direct search of the codebase: there is currently no skill, experie
 - [x] High-level PatternMiner coordinator in `validators/learning/miner.py`.
 - [x] CLI tooling implemented in `cli/learn.py` (`stackmind learn clusters`, `stackmind learn mine`, `stackmind learn distill`).
 - [x] Complete test suite passing in `tests/test_phase4_pattern_mining.py`.
+
+### Phase 5 Implementation Summary (Completed)
+
+- [x] 3-Stage Verification Pipeline data models and deterministic receipts (`RECEIPT-*`) implemented in `validators/verification/models.py` and `validators/verification/pipeline.py`.
+- [x] Stage 1 (Structural Verification) enforcing schema conformance, step completeness, and D025 policy in `validators/verification/structural.py`.
+- [x] Stage 2 (Historical Replay Verification) computing sequence fidelity against cited source `EXP-*` records in `validators/verification/replay.py`.
+- [x] Stage 3 (Canary Simulation) verifying template variable expansion, preconditions, and sandbox module boundaries in `validators/verification/canary.py`.
+- [x] Strict promotion gate integrated into `SkillStore.promote_version()`, blocking promotion to `ACTIVE` if any stage fails.
+- [x] CLI testing and promotion commands implemented in `cli/skill.py` (`stackmind skill test`, `stackmind skill promote`).
+- [x] Complete test suite passing in `tests/test_phase5_verification_pipeline.py`.
 
 ---
 

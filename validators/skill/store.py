@@ -159,11 +159,27 @@ class SkillStore:
         *,
         reason: str = "Passed verification and canary checks",
         author_agent: str = "claude",
+        skip_pipeline: bool = False,
     ) -> SkillRecord:
-        """Promote a specific version of a skill to ACTIVE status."""
+        """Promote a specific version of a skill to ACTIVE status after passing verification pipeline."""
         current = self.get_skill(name, version)
         if current is None:
             raise ValueError(f"Skill '{name}' version {version} does not exist.")
+
+        if not skip_pipeline:
+            from validators.verification.pipeline import VerificationPipeline
+            pipeline_result = VerificationPipeline.verify_skill(current, self.project_path)
+            if not pipeline_result.passed:
+                failed_stages = [s.stage_name for s in pipeline_result.stage_results if not s.passed]
+                stage_errors = "; ".join(
+                    f"{s.stage_name}: {', '.join(s.messages)}"
+                    for s in pipeline_result.stage_results
+                    if not s.passed
+                )
+                raise ValueError(
+                    f"Promotion rejected: Skill '{name}' v{version} failed verification pipeline "
+                    f"in stages {failed_stages}. Details: {stage_errors}"
+                )
 
         prov = SkillProvenance(
             source_experience_ids=current.provenance.source_experience_ids,

@@ -280,6 +280,62 @@ def create_command(name: str, description: str, risk_tier: str, actions: Sequenc
     console.print(f"[bold green][SUCCESS][/bold green] Created candidate skill '{rec.name}' v1 ({rec.skill_id}).")
 
 
+@skill_group.command("test")
+@click.argument("name")
+@click.option(
+    "--version",
+    "-v",
+    type=int,
+    default=None,
+    help="Version number to test (defaults to latest)",
+)
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+def test_command(name: str, version: int | None, project_path: str):
+    """Run the 3-Stage Verification Pipeline (Structural, Replay, Canary) on a skill."""
+    console = Console()
+    store = SkillStore(project_path)
+    slug = name.strip().lower()
+    skill = store.get_skill(slug, version=version)
+
+    if not skill:
+        console.print(f"[bold red]Error:[/bold red] Skill '{slug}' (version {version or 'latest'}) not found.")
+        return
+
+    from validators.verification.pipeline import VerificationPipeline
+    pipeline_result = VerificationPipeline.verify_skill(skill, project_path)
+
+    table = Table(title=f"3-Stage Verification Pipeline: {skill.name} v{skill.version}")
+    table.add_column("Verification Stage", style="bold")
+    table.add_column("Status", justify="center")
+    table.add_column("Score", justify="right", style="cyan")
+    table.add_column("Diagnostic Evidence", style="italic")
+
+    for s in pipeline_result.stage_results:
+        status_styled = "[bold green]PASS[/bold green]" if s.passed else "[bold red]FAIL[/bold red]"
+        msg_summary = "; ".join(s.messages) if s.messages else "-"
+        table.add_row(
+            s.stage_name.capitalize(),
+            status_styled,
+            f"{s.score:.2f}",
+            msg_summary,
+        )
+
+    console.print(table)
+    overall_styled = "[bold green]PASSED[/bold green]" if pipeline_result.passed else "[bold red]FAILED[/bold red]"
+    console.print(
+        f"\n[bold]Overall Pipeline Outcome:[/bold] {overall_styled} "
+        f"(Composite Score: {pipeline_result.overall_score:.2f})\n"
+        f"[dim]Verification Receipt:[/dim] [cyan]{pipeline_result.receipt_id}[/cyan]"
+    )
+
+
 @skill_group.command("promote")
 @click.argument("name")
 @click.option(
@@ -296,6 +352,11 @@ def create_command(name: str, description: str, risk_tier: str, actions: Sequenc
     help="Audit rationale for promoting this skill",
 )
 @click.option(
+    "--skip-pipeline",
+    is_flag=True,
+    help="Bypass verification pipeline gate (requires explicit justification)",
+)
+@click.option(
     "--project",
     "-p",
     "project_path",
@@ -303,8 +364,8 @@ def create_command(name: str, description: str, risk_tier: str, actions: Sequenc
     type=click.Path(exists=True),
     help="Project root directory",
 )
-def promote_command(name: str, version: int | None, reason: str, project_path: str):
-    """Promote a candidate/experimental skill version to ACTIVE status."""
+def promote_command(name: str, version: int | None, reason: str, skip_pipeline: bool, project_path: str):
+    """Promote a candidate/experimental skill version to ACTIVE status after verification."""
     console = Console()
     store = SkillStore(project_path)
     slug = name.strip().lower()
@@ -316,7 +377,7 @@ def promote_command(name: str, version: int | None, reason: str, project_path: s
             return
 
     try:
-        promoted = store.promote_version(slug, version, reason=reason)
+        promoted = store.promote_version(slug, version, reason=reason, skip_pipeline=skip_pipeline)
         console.print(f"[bold green][SUCCESS][/bold green] Promoted skill '{promoted.name}' v{promoted.version} ({promoted.skill_id}) to ACTIVE.")
     except Exception as exc:
         console.print(f"[bold red]Promotion failed:[/bold red] {exc}")

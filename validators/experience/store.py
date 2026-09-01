@@ -52,6 +52,8 @@ class ExperienceStore:
         except Exception:
             return None
 
+    get_record = load_record
+
     def list_records(
         self,
         *,
