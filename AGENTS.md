@@ -115,6 +115,7 @@ Agents must NEVER:
 - **operate outside of your Contract's scope boundary** — attempting to modify or query files/subgraphs explicitly denied or not allowed by your contract will be rejected by the API.
 - **Architects MUST NEVER write or edit application source code.** (All implementation MUST be delegated to workers).
 - **Workers MUST NEVER generate or modify Contract YAML files.**
+- **NEVER spawn in-process subagents (`invoke_subagent`, `define_subagent`, or background subagents) to execute roster agent roles (Codex, Gemini, Gemma, Claude, Local-LLM). Each roster agent runs in its own separate IDE or terminal session. Delegation across roles is strictly file-based via `.sync/inbox/<agent>/` and Work Orders (IDE-01).**
 
 ---
 
@@ -151,6 +152,21 @@ Workers (Codex, Gemini):
 
 ---
 
+## Process Isolation & IDE Subagent Protocol (IDE-01)
+
+StackMind enforces **strict process isolation** between agent roles:
+1. **No In-Process Subagent Simulation**:
+   - Host IDEs (Antigravity/AGY, Claude Code, Cursor, Windsurf) MUST NOT use built-in subagent spawning tools (`invoke_subagent`, `define_subagent`, background tasks) to simulate or run roster agents (Codex, Gemini, Gemma, Local-LLM).
+   - Each agent role runs in its own dedicated, separate IDE window or terminal session.
+2. **File-Based Asynchronous Delegation**:
+   - When delegating a task to another agent (e.g. Claude delegating to Codex):
+     1. Write the Work Order: `.sync/work-orders/ACTIVE/<WO-ID>.yaml`
+     2. Write the Contract: `.sync/contracts/<WO-ID>.yaml`
+     3. Write the Dispatch Notice: `.sync/inbox/<agent>/<date>_<sender>_<wo-id>-assignment.md`
+     4. **STOP and do not execute the work.** Tell the user: *"Work order <WO-ID> and contract have been dispatched to <agent>'s inbox. Please switch to your separate <agent> IDE/terminal session to proceed."*
+
+---
+
 # Behavioral Contract Rules
 
 | Contract ID | Rule | Enforced In |
@@ -164,6 +180,7 @@ Workers (Codex, Gemini):
 | CLAUDE-03 | Session numbering must be cardinal (`session_completed: N`, `next_session_id: N+1`) | Handoff header/footer |
 | **CONTRACT-01** | All workers are bound by a stateful YAML contract defining Identity, Task, Scope, and Budget. Out-of-scope queries/edits will fail closed at the Knowledge API level. | Knowledge API, Harness |
 | **LEARN-01** | Verified Procedural Learning: captures experiences (`EXP-*`), compiles FTS5 cache, mines clusters ($N \ge 3$), verifies via 3-stage pipeline (Structural/Replay/Canary), and gates promotion by risk tier. | Knowledge API, Harness, SkillStore |
+| **IDE-01** | Process Isolation: Never spawn in-process subagents (`invoke_subagent`) for roster roles; delegation is strictly file-based | Forbidden Actions, Process Isolation |
 
 ## CONTRACT-01: Agent Governance & The Contract Layer
 
