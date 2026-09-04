@@ -306,3 +306,66 @@ def search_command(query: str, project_path: str, eligible_only: bool, agent_id:
         )
 
     console.print(table)
+
+
+@experience_group.command("capture")
+@click.option(
+    "--work-order",
+    "-w",
+    default=None,
+    help="Work Order ID (e.g. WO-058) to capture as an experience record",
+)
+@click.option(
+    "--agent",
+    "-a",
+    default=None,
+    help="Agent identifier (e.g. codex, gemini)",
+)
+@click.option(
+    "--backfill",
+    is_flag=True,
+    default=False,
+    help="Backfill experience records for all completed work orders in the project",
+)
+@click.option(
+    "--project",
+    "-p",
+    "project_path",
+    default=".",
+    type=click.Path(exists=True),
+    help="Project root directory",
+)
+def capture_command(work_order: str | None, agent: str | None, backfill: bool, project_path: str):
+    """Capture execution experience records from work orders or backfill completed history."""
+    console = Console()
+    from validators.experience.recorder import ExperienceRecorder
+    p = Path(project_path).resolve()
+
+    if backfill:
+        wo_dir = p / ".sync" / "work-orders"
+        if not wo_dir.exists():
+            console.print(f"[bold red]Error:[/bold red] No .sync/work-orders directory found at {p}")
+            return
+
+        wo_files = list(wo_dir.glob("*.yaml")) + list((wo_dir / "COMPLETED").glob("*.yaml"))
+        captured = 0
+        for wf in wo_files:
+            if wf.name in {"INDEX.yaml"}:
+                continue
+            rec = ExperienceRecorder.capture_from_work_order(p, wf, agent=agent, save=True)
+            if rec:
+                captured += 1
+                console.print(f"[green][+] Captured {wf.stem}: {rec.experience_id}[/green]")
+
+        console.print(f"\n[bold green]Backfilled {captured} experience record(s).[/bold green]")
+        return
+
+    if work_order:
+        rec = ExperienceRecorder.capture_from_work_order(p, work_order, agent=agent, save=True)
+        if rec:
+            console.print(f"[bold green][SUCCESS][/bold green] Captured experience {rec.experience_id} for {work_order}")
+        else:
+            console.print(f"[bold red]Error:[/bold red] Could not find or parse work order '{work_order}'")
+        return
+
+    console.print("[yellow]Please specify --work-order <WO-ID> or --backfill to capture experiences.[/yellow]")

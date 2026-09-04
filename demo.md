@@ -304,7 +304,23 @@ Stage 1: Structural   Stage 2: Replay      Stage 3: Canary
 ### 🧪 Procedural Learning Hands-On Walkthrough
 
 #### 1. Experience Capture & Compilation
-Every verified task completed by a worker or harness execution is recorded with observed actions, verification receipts, and execution metrics:
+Experiences (`EXP-*`) capture structured execution trajectories (tools used, modified files, verification receipts, and execution metrics). Experiences are generated in three ways:
+
+1. **Automatic on Agent Shutdown**: When an interactive worker (e.g., Codex or Gemini) completes work and runs `stackmind shutdown <agent>`, StackMind automatically extracts actions, diffs, and verification receipts from the work order and handoff to mint an `EXP-*` record.
+2. **Automatic on Harness Run**: Autonomous runs via `stackmind harness run-once --agent codex -p .` automatically record the episode upon staging and verification.
+3. **Explicit / Historical Backfill**: You can capture any completed work order or backfill entire project history:
+   ```powershell
+   # Capture a specific completed work order
+   stackmind experience capture --work-order WO-001 -p .
+
+   # Or harvest all existing completed work orders across your project at once
+   stackmind experience capture --backfill -p .
+
+   # Synchronize captured records into the rebuildable SQLite FTS5 search index
+   stackmind experience compile -p .
+   ```
+
+Once captured, inspect and search experiences:
 
 ```powershell
 # List captured experience records
@@ -312,9 +328,6 @@ stackmind experience list -p .
 
 # View detailed execution record with action steps & verification dimensions
 stackmind experience show EXP-a1b2c3d4e5f67890 -p .
-
-# Rebuild / update the derived SQLite FTS5 experience index
-stackmind experience compile -p .
 
 # Search past experiences with BM25 full-text ranking
 stackmind experience search "redis connection pool" -p .
@@ -414,6 +427,7 @@ stackmind skill revalidate redis_cache_tuning -p .
 |---|---|
 | `stackmind experience list` | List captured experience records with verification status |
 | `stackmind experience show <ID>` | Display detailed experience record, actions, and observations |
+| `stackmind experience capture` | Capture experience from a work order or backfill project history |
 | `stackmind experience compile` | Incrementally update derived SQLite FTS5 experience search index |
 | `stackmind experience search "<QUERY>"` | Search historical experiences using BM25 full-text ranking |
 | `stackmind learn clusters` | Discover recurring execution clusters across learning-eligible episodes |

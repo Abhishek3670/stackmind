@@ -389,3 +389,67 @@ def test_experience_cli_commands(temp_workspace):
     assert res_stats.exit_code == 0
     assert "Experience Subsystem Statistics" in res_stats.output
     assert "Learning Eligible" in res_stats.output
+
+
+def test_capture_from_work_order_and_session(temp_workspace):
+    wo_dir = temp_workspace / ".sync" / "work-orders"
+    wo_dir.mkdir(parents=True, exist_ok=True)
+    wo_file = wo_dir / "WO-100.yaml"
+    wo_file.write_text(
+        """schema_version: 1
+id: WO-100
+title: "Implement Fast Cache"
+status: COMPLETED
+assigned_agents:
+  - codex
+qa_verdict: APPROVED
+deliverable:
+  type: module
+  path: app/cache.py
+required_changes:
+  - id: R1
+    summary: "Add Redis Cache Layer"
+    detail: "Implement connect and get/set methods"
+""",
+        encoding="utf-8",
+    )
+
+    # Test direct capture
+    rec = ExperienceRecorder.capture_from_work_order(temp_workspace, "WO-100", agent="codex")
+    assert rec is not None
+    assert rec.work_order_id == "WO-100"
+    assert rec.learning_eligible is True
+    assert len(rec.actions) == 1
+    assert rec.actions[0].command_or_symbol == "Add Redis Cache Layer"
+
+    # Test CLI capture command
+    runner = CliRunner(env={"COLUMNS": "160"})
+    res = runner.invoke(cli, ["experience", "capture", "--work-order", "WO-100", "-p", str(temp_workspace)])
+    assert res.exit_code == 0
+    assert "Captured experience" in res.output
+
+    # Test CLI backfill
+    res_backfill = runner.invoke(cli, ["experience", "capture", "--backfill", "-p", str(temp_workspace)])
+    assert res_backfill.exit_code == 0
+    assert "Backfilled" in res_backfill.output
+
+    # Test capture from session handoff
+    outbox = temp_workspace / ".sync" / "outbox" / "codex"
+    outbox.mkdir(parents=True, exist_ok=True)
+    handoff = outbox / "handoff-2026-09-01T160000.md"
+    handoff.write_text(
+        """# Session Handoff - Codex
+## COMPLETED
+- Completed WO-100: Redis cache layer implementation.
+## Quality Metrics
+- commit: abc1234
+- branch: main
+- tested_at: 2026-09-01T16:00:00Z
+""",
+        encoding="utf-8",
+    )
+
+    session_rec = ExperienceRecorder.capture_from_session(temp_workspace, "codex", handoff_path=handoff)
+    assert session_rec is not None
+    assert session_rec.work_order_id == "WO-100"
+    assert session_rec.learning_eligible is True

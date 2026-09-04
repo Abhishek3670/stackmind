@@ -60,7 +60,7 @@ def clusters_command(project_path: str, min_samples: int, min_similarity: float)
     table.add_column("Normalized Intent", style="bold green")
     table.add_column("Episodes", justify="center", style="magenta")
     table.add_column("Similarity", justify="center", style="cyan")
-    table.add_column("Eligible (N ≥ 3)", justify="center")
+    table.add_column("Eligible (N >= 3)", justify="center")
     table.add_column("Action Summary", style="italic")
 
     for c in clusters:
