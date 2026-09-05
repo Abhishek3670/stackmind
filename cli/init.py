@@ -31,7 +31,7 @@ DEFAULT_AGENTS = ["claude", "codex", "gemini", "gemma", "local-llm"]
 PLACEHOLDER_PATTERN = re.compile(r"\{\{(\w+)\}\}")
 
 # Runtime version for fresh installs
-RUNTIME_VERSION = "3.0.0"
+RUNTIME_VERSION = "3.1.0"
 
 
 def get_templates_dir() -> Path:
@@ -189,6 +189,12 @@ def _create_empty_dirs(sync_path: Path, agents: list[str]) -> None:
         "state",
         "runtime/drafts",
         "runtime/receipts",
+        "experience/records",
+        "experience/cache",
+        "skills/manifests",
+        "skills/active",
+        "skills/approvals",
+        "skills/verification",
     ]
 
     for dir_name in gitkeep_dirs:

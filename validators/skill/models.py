@@ -231,7 +231,7 @@ class SkillRecord:
                 schema_path = cand
 
         if not schema_path:
-            root = Path(__file__).parent.parent.parent
+            root = Path(__file__).resolve().parent.parent.parent
             schema_path = root / "schemas" / "skill.schema.json"
 
         if not schema_path.exists():

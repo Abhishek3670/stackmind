@@ -386,7 +386,7 @@ class TestDriftMigrateValidate:
 
         # 2. Migrate (1.0.0 → 1.1.0 → 1.2.0).
         assert migrate(fresh_project) is True
-        assert get_current_version(sync_path) == "1.2.0"
+        assert get_current_version(sync_path) == "3.1.0"
 
         # 3. Validation is now clean of the drift errors.
         after = validate(fresh_project)
