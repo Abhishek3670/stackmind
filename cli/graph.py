@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import Any
 
@@ -718,6 +719,10 @@ def stats(project_path: str):
     values = _graph_stats(Path(project_path))
     console.print(f'nodes: {values["nodes"]}')
     console.print(f'edges: {values["edges"]}')
+    console.print(f'resolved_ratio: {values["resolved_ratio"]}')
+    console.print(f'diagnostics: {values["diagnostics"]}')
+    if values.get('diagnostics_by_code'):
+        console.print(f'diagnostics_by_code: {values["diagnostics_by_code"]}')
     console.print(f'revisions: {values["revisions"]}')
     console.print(f'latest_revision: {values["latest_revision"]}')
     for key in (
@@ -766,14 +771,41 @@ def versions(project_path: str):
 
 def _graph_stats(project_path: Path) -> dict[str, Any]:
     project_path = project_path.resolve()
-    ir = read_ir(project_path)
     revisions_path = project_path / '.sync' / 'knowledge' / 'revisions'
     revisions = len(list(revisions_path.glob('REV-*.json'))) if revisions_path.exists() else 0
     latest = latest_revision_id(project_path)
+
+    summary_path = project_path / '.sync' / 'knowledge' / 'cache' / 'metrics' / 'summary.json'
+    summary_data = None
+    if summary_path.exists():
+        try:
+            summary_data = json.loads(summary_path.read_text(encoding='utf-8'))
+        except Exception:
+            summary_data = None
+
+    if summary_data is not None:
+        nodes = summary_data.get('nodes', {}).get('total', 0)
+        edges = summary_data.get('edges', {}).get('total', 0)
+        resolved_ratio = summary_data.get('edges', {}).get('resolved_ratio', 0.0)
+        diagnostics = summary_data.get('diagnostics', {}).get('total', 0)
+        diagnostics_by_code = summary_data.get('diagnostics', {}).get('by_code', {})
+    else:
+        ir = read_ir(project_path)
+        nodes = len(ir.symbols)
+        edges = len(ir.edges)
+        resolved_count = sum(1 for e in ir.edges if e.resolution == 'RESOLVED')
+        resolved_ratio = round(resolved_count / edges, 4) if edges else 0.0
+        diagnostics = len(ir.diagnostics)
+        from collections import Counter
+        diagnostics_by_code = dict(sorted(Counter(d.code for d in ir.diagnostics).items()))
+
     values: dict[str, Any] = {
-        'edges': len(ir.edges),
+        'edges': edges,
         'latest_revision': latest,
-        'nodes': len(ir.symbols),
+        'nodes': nodes,
+        'resolved_ratio': resolved_ratio,
+        'diagnostics': diagnostics,
+        'diagnostics_by_code': diagnostics_by_code,
         'revisions': revisions,
     }
     values.update(read_enrichment_status(project_path))
@@ -1152,45 +1184,40 @@ def _route_payload(symbol: Any, edges: list[Any], symbols_by_id: dict[str, Any])
     }
 
 
+def _parse_kv_parts(rest: str) -> dict[str, str]:
+    """Parse 'k1=v1; k2=v2' into a dictionary."""
+    return dict(item.strip().split('=', 1) for item in rest.split(';') if '=' in item)
+
+
 def _route_parts(signature: str) -> dict[str, str | None]:
     first, _, rest = signature.partition(';')
     method, _, path = first.partition(' ')
-    values: dict[str, str | None] = {
-        'endpoint': None,
+    kv = _parse_kv_parts(rest)
+    return {
+        'endpoint': kv.get('endpoint'),
         'method': method,
         'path': path,
-        'response_model': None,
-        'status_code': None,
+        'response_model': kv.get('response_model'),
+        'status_code': kv.get('status_code'),
     }
-    for part in rest.split(';'):
-        key, _, value = part.strip().partition('=')
-        if key in values:
-            values[key] = value
-    return values
 
 
 def _django_url_parts(signature: str) -> dict[str, str | None]:
     first, _, rest = signature.partition(';')
     kind, _, route = first.partition(' ')
-    values: dict[str, str | None] = {'kind': kind, 'name': None, 'route': route, 'target': None}
-    for part in rest.split(';'):
-        key, _, value = part.strip().partition('=')
-        if key in values:
-            values[key] = value
-    return values
+    kv = _parse_kv_parts(rest)
+    return {'kind': kind, 'name': kv.get('name'), 'route': route, 'target': kv.get('target')}
 
 
 def _django_signal_parts(signature: str) -> dict[str, str | None]:
     first, _, rest = signature.partition(';')
     _, _, signal = first.partition(' ')
-    values: dict[str, str | None] = {'receiver': None, 'sender': None, 'signal': signal}
-    for part in rest.split(';'):
-        key, _, value = part.strip().partition('=')
-        if key == 'function':
-            values['receiver'] = value
-        if key in values:
-            values[key] = value
-    return values
+    kv = _parse_kv_parts(rest)
+    return {
+        'receiver': kv.get('receiver', kv.get('function')),
+        'sender': kv.get('sender'),
+        'signal': signal,
+    }
 
 
 def _outgoing_edges(ir: Any) -> dict[str, list[Any]]:
@@ -1364,23 +1391,15 @@ def _compiled_celery_tasks(project_path: Path) -> dict[str, Any]:
 def _parse_celery_task_signature(sig: str) -> dict[str, str | None]:
     first, _, rest = sig.partition(';')
     name = first.replace('task ', '', 1).strip()
-    values = {'name': name, 'queue': None, 'bind': 'false', 'options': None}
-    for part in rest.split(';'):
-        k, _, v = part.strip().partition('=')
-        if k in values:
-            values[k] = v
-    return values
+    kv = _parse_kv_parts(rest)
+    return {'name': name, 'queue': kv.get('queue'), 'bind': kv.get('bind', 'false'), 'options': kv.get('options')}
 
 
 def _parse_celery_beat_signature(sig: str) -> dict[str, str | None]:
     first, _, rest = sig.partition(';')
     entry_name = first.replace('beat ', '', 1).strip()
-    values = {'entry_name': entry_name, 'task': None, 'schedule': None, 'options': None}
-    for part in rest.split(';'):
-        k, _, v = part.strip().partition('=')
-        if k in values:
-            values[k] = v
-    return values
+    kv = _parse_kv_parts(rest)
+    return {'entry_name': entry_name, 'task': kv.get('task'), 'schedule': kv.get('schedule'), 'options': kv.get('options')}
 
 
 def _compiled_task_flow(project_path: Path) -> list[dict[str, Any]]:
@@ -1462,42 +1481,17 @@ def _parse_alembic_signature(sig: str) -> dict[str, Any]:
 
 def _topo_sort_migrations(migrations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_rev = {mig['revision']: mig for mig in migrations}
-    in_degree = {}
-    adj = {}
-    for revision in by_rev:
-        in_degree[revision] = 0
-        adj[revision] = []
-        
+    ts = TopologicalSorter()
     for mig in migrations:
         rev = mig['revision']
-        down = mig['down_revision']
-        parents = []
-        if isinstance(down, str):
-            parents = [down]
-        elif isinstance(down, list):
-            parents = down
-            
-        for parent in parents:
-            if parent in by_rev:
-                in_degree[rev] += 1
-                adj[parent].append(rev)
-                
-    queue = [rev for rev in sorted(by_rev.keys()) if in_degree[rev] == 0]
-    sorted_revs = []
-    
-    while queue:
-        queue.sort()
-        curr = queue.pop(0)
-        sorted_revs.append(curr)
-        for child in sorted(adj[curr]):
-            in_degree[child] -= 1
-            if in_degree[child] == 0:
-                queue.append(child)
-                
-    for rev in sorted(by_rev.keys()):
-        if rev not in sorted_revs:
-            sorted_revs.append(rev)
-            
+        down = mig.get('down_revision')
+        parents = [down] if isinstance(down, str) else (down if isinstance(down, list) else [])
+        valid_parents = [p for p in parents if p in by_rev]
+        ts.add(rev, *valid_parents)
+    try:
+        sorted_revs = [r for r in ts.static_order() if r in by_rev]
+    except CycleError:
+        sorted_revs = sorted(by_rev.keys())
     return [by_rev[rev] for rev in sorted_revs]
 
 

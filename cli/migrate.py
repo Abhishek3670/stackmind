@@ -274,7 +274,7 @@ def migrate(
             console.print(f"[bold red][x] Migration manifest for {last_version} not found[/bold red]")
             return False
 
-        console.print(f"[cyan]Rolling back: {migration['from_version']} ← {migration['to_version']}[/cyan]")
+        console.print(f"[cyan]Rolling back: {migration['from_version']} <- {migration['to_version']}[/cyan]")
         console.print(f"  {migration.get('description', '')}")
 
         if check:
@@ -302,7 +302,7 @@ def migrate(
 
     console.print(f"[cyan]Pending migrations: {len(pending)}[/cyan]")
     for m in pending:
-        console.print(f"  • {m['from_version']} → {m['to_version']}: {m.get('description', '')}")
+        console.print(f"  * {m['from_version']} -> {m['to_version']}: {m.get('description', '')}")
 
     if check:
         console.print("[dim]--check mode, no changes made[/dim]")
@@ -310,7 +310,7 @@ def migrate(
 
     # Apply migrations
     for m in pending:
-        console.print(f"[cyan]Applying: {m['from_version']} → {m['to_version']}[/cyan]")
+        console.print(f"[cyan]Applying: {m['from_version']} -> {m['to_version']}[/cyan]")
         if apply_migration(sync_path, m):
             applied.append(m["to_version"])
             save_applied_migrations(sync_path, applied)

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.1.1] - 2026-09-06
+
+### Changed
+- **Lean Dependency Surface:** Removed unused heavy dependencies `libcst` and `jedi` from runtime requirements in `pyproject.toml` (saving ~100MB download weight) since the compiler uses Python standard library `ast`; packaged `sentence-transformers` under optional `embeddings` extra (`pip install "stackmind[embeddings]"`).
+- **$O(1)$ Knowledge Health Stats:** Wired cached projection `summary.json` directly into `_graph_stats` and `stackmind graph stats` to provide instant graph completeness metrics (`resolved_ratio`, `diagnostics`, and `diagnostics_by_code`) without re-parsing raw IR nodes.
+- **Topological Sorting via Standard Library:** Replaced hand-rolled Kahn's algorithm in `cli/graph.py` with Python 3.9+ `graphlib.TopologicalSorter`.
+- **Safe Boot Snapshot Discovery:** Modernized agent discovery in `cli/validate.py` using `Path.glob("*.boot.yaml")` and `.removesuffix(".boot")`.
+- **Consolidated Signature Parsers:** Replaced repetitive semicolon-and-equals string splitting across 5 CLI formatters with a shared `_parse_kv_parts` generator in `cli/graph.py`.
+
+### Fixed
+- **Package Schema Fallback:** Fixed schema resolution in validators (`contract.py`, `validate.py`, `models.py`) to fall back to the internal package schema directory, eliminating the requirement for a copied `schemas/` folder in consumer workspaces.
+
+---
+
+## [3.1.0] - 2026-09-01
+
+### Added
+- **Phase 0 Verification & Trust Foundation (`PLAN_PROCEDURAL_LEARNING.md` / `FINAL.md §28`):**
+  - Runner-owned `WorkspaceSnapshot` and `WorkspaceDiff` engine (`validators/harness/snapshot.py`) providing authoritative before/after filesystem change detection independent of LLM claims.
+  - Observed vs. declared change set validation detecting unannounced modifications and phantom declarations.
+  - Contract scope enforcement on actual observed filesystem modifications in `verify_post_execution()` (`validators/harness/contract_gate.py`).
+  - Multi-dimensional verification reporting (`VerificationDimensions`) covering scope, state, code, behavioral, security, and outcome dimensions.
+  - Canonical 3-level trust eligibility gate (`TrustLevel: OBSERVABLE → VERIFIED → LEARNING_ELIGIBLE`).
+  - Dedicated Phase 0 automated test suite (`tests/test_phase0_trust_and_verification.py`).
+- **Verified Procedural Learning Roadmap:**
+  - Added `PLAN_PROCEDURAL_LEARNING.md` defining the 8-phase procedural learning implementation roadmap.
+  - Re-validated and corrected codebase investigation report (`docs/PROCEDURAL_LEARNING_TECHNICAL_INVESTIGATION.md`).
+  - Updated `PLAN.md` with procedural learning as the follow-up milestone.
+
+### Fixed
+- **Security & Trust Hardening:**
+  - Fixed write-lock TOCTOU race in `cli/lock.py:acquire_lock()` using atomic `os.O_CREAT | os.O_EXCL` and atomic `.tmp` replacement.
+  - Added automatic audit receipts for force-steals (`.sync/runtime/receipts/LOCK_STOLEN_*.yaml`).
+  - Fixed path-traversal vulnerability in `validators/knowledge/enricher.py:_source_excerpt()` with strict workspace root anchoring.
+  - Expanded secret redaction patterns to cover GitHub PATs, AWS access keys, connection strings, and private keys.
+
+---
+
 ## [3.0.0] - 2026-08-26
 
 ### Added

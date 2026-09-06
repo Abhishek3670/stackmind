@@ -69,6 +69,27 @@ Triggers only if the Phase 1 determinism check fails (i.e., `cbm` cannot give by
 
 ---
 
+## Next Milestone / Follow-up Initiative: Verified Procedural Learning
+
+Following the completion of the Multi-Language Universal Frontend and WO-036 governance milestones, StackMind's subsequent major architectural initiative is **Verified Procedural Learning**.
+
+* **Dedicated Implementation Plan**: [`PLAN_PROCEDURAL_LEARNING.md`](file:///W:/Aatish/Stuff/stackmind/PLAN_PROCEDURAL_LEARNING.md)
+* **Design Specification**: `StackMind_Verified_Procedural_Learning_FINAL.md` (§1–§30)
+* **Technical Codebase Investigation**: [`docs/PROCEDURAL_LEARNING_TECHNICAL_INVESTIGATION.md`](file:///W:/Aatish/Stuff/stackmind/docs/PROCEDURAL_LEARNING_TECHNICAL_INVESTIGATION.md)
+* **Core Sequencing Requirement**: **Phase 0 (Verification & Trust Foundation)** must be 100% complete and verified before any autonomous skill capture, compilation, or promotion begins.
+
+```text
+CURRENT MILESTONE: Multi-Language Frontend (v3.0) ──► Phase 1-4
+                                                                │
+                                                                ▼
+FOLLOW-UP MILESTONE: Verified Procedural Learning (v4.0) ──► Phase 0 (Trust & Verification Gate)
+                                                                │
+                                                                ▼
+                                                             Phases 1–8 (Capture → Distill → Verify → Promote)
+```
+
+---
+
 ## Note
 
 Do NOT commit changes yet (per CEO directive) — applies for the duration of this plan, not just its first step.

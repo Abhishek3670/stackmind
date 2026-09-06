@@ -604,8 +604,9 @@ class KnowledgeAPI:
         limit: int = 8,
         query_embedding: Sequence[float] | None = None,
         contract: AgentContract | str | Path | None = None,
+        include_skills: bool = True,
     ) -> ContextBundle:
-        """Assemble a bounded context bundle for agent prompts."""
+        """Assemble a bounded context bundle for agent prompts, including verified active procedural skills."""
         self._check_expiration(contract)
         seed_hits = self.lookup(query, limit=max(1, limit), contract=contract)
         if seed_hits.results:
@@ -648,6 +649,34 @@ class KnowledgeAPI:
         estimated_tokens = 0
         truncated = False
         truncation_reason = None
+
+        # 1. Retrieve matching verified active skills (Phase 7 Procedural Learning Integration)
+        if include_skills:
+            try:
+                from validators.skill.retriever import SkillRetriever
+                retriever = SkillRetriever(self.project_path)
+                matched_skills = retriever.retrieve_skills(query, contract=contract, limit=2)
+                for res in matched_skills:
+                    skill_block = res.formatted_guidance
+                    skill_tokens = _estimate_tokens(skill_block)
+                    if estimated_tokens + skill_tokens <= token_budget:
+                        entries.append(
+                            ContextEntry(
+                                node_id=res.skill.skill_id,
+                                rank=110,
+                                confidence=res.skill.metrics.confidence_score,
+                                text=skill_block,
+                                reason="procedural_skill",
+                                why_retrieved=("verified_procedural_skill", f"relevance={res.relevance_score:.2f}"),
+                                access_status="allowed",
+                            )
+                        )
+                        text_blocks.append(skill_block)
+                        estimated_tokens += skill_tokens
+            except Exception:
+                # Skill retrieval failures must fail open for standard graph context
+                pass
+
         for rank, result in sorted(
             ranked.values(),
             key=lambda item: (-item[0], item[1].path, item[1].qualified_name, item[1].node_id),

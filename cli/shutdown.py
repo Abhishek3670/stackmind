@@ -397,6 +397,22 @@ def shutdown(project_path: Path, agent: str, force: bool = False, defer: bool = 
     if receipt_path is not None:
         console.print(f"[green][+] Wrote session receipt: {receipt_path.name}[/green]")
 
+    # Automatically record execution experience for Procedural Learning (LEARN-01)
+    try:
+        from validators.experience.recorder import ExperienceRecorder
+        exp_rec = ExperienceRecorder.capture_from_session(
+            project_path,
+            agent,
+            handoff_path=archived_handoff or handoff,
+            session_id=session_id,
+            save=True,
+        )
+        if exp_rec is not None:
+            console.print(f"[green][+] Recorded procedural experience: {exp_rec.experience_id}[/green]")
+    except Exception:
+        # Experience capture failure must not block shutdown
+        pass
+
     # Release the write lock (PLAT-03). Shutdown is the canonical mechanism
     # that clears the lock, enforcing serialized canonical writes across
     # sessions. Only the holding agent's lock is cleared in the normal flow;

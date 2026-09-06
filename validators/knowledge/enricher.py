@@ -22,8 +22,12 @@ from .storage import canonical_json, knowledge_root
 PRIVACY_MODES = {'full', 'signatures', 'local', 'off'}
 DEFAULT_PROMPT_VERSION = 'enrich-v1'
 SECRET_PATTERNS = [
-    re.compile(r'(?i)(api[_-]?key|token|secret|password)\s*=\s*["\'][^"\']+["\']'),
+    re.compile(r'(?i)(api[_-]?key|token|secret|password|passwd|private[_-]?key)\s*[:=]\s*["\'][^"\']+["\']'),
     re.compile(r'(?i)(authorization:\s*bearer\s+)[a-z0-9._-]+'),
+    re.compile(r'(?i)(ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{82})'),
+    re.compile(r'(?i)(aws_access_key_id|aws_secret_access_key)\s*[:=]\s*["\'][^"\']+["\']'),
+    re.compile(r'-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+ PRIVATE KEY-----'),
+    re.compile(r'(?i)(postgres|mysql|mongodb|redis):\/\/[^:\s]+:[^@\s]+@[^\s]+'),
 ]
 
 
@@ -452,7 +456,12 @@ def _source_excerpt(project_path: Path, node: dict[str, Any]) -> str:
     location = deterministic.get('location', {})
     if not isinstance(rel_path, str):
         return ''
-    source_path = project_path.resolve() / rel_path
+    base_dir = project_path.resolve()
+    source_path = (base_dir / rel_path).resolve()
+    try:
+        source_path.relative_to(base_dir)
+    except ValueError:
+        return ''  # Block path traversal outside project root
     if not source_path.exists():
         return ''
     lines = source_path.read_text(encoding='utf-8').splitlines()
@@ -466,7 +475,10 @@ def _source_excerpt(project_path: Path, node: dict[str, Any]) -> str:
 def _redact_secrets(text: str) -> str:
     redacted = text
     for pattern in SECRET_PATTERNS:
-        redacted = pattern.sub(r'\1***', redacted)
+        if pattern.groups > 0:
+            redacted = pattern.sub(r'\1***', redacted)
+        else:
+            redacted = pattern.sub(r'***', redacted)
     return redacted
 
 

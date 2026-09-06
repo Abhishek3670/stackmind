@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stackmind"
-version = "3.0.0"
+version = "3.1.1"
 description = "Compiler-Backed Multi-Agent Engineering Runtime"
 readme = "README.md"
 license = "MIT"
@@ -30,14 +30,15 @@ classifiers = [
 ]
 dependencies = [
     "click>=8.0",
-    "jedi>=0.19",
-    "libcst>=1.4",
     "pyyaml>=6.0",
     "jsonschema>=4.0",
     "rich>=13.0",
 ]
 
 [project.optional-dependencies]
+embeddings = [
+    "sentence-transformers>=2.2.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

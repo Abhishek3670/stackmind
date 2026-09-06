@@ -251,6 +251,204 @@ stackmind graph explain-denial WO-001 --node auth.secrets
 
 ---
 
+---
+
+## 🧠 Verified Procedural Learning (Phases 1–8)
+
+StackMind features a **Verified Procedural Learning** engine that distills successful agent trajectories into reusable, risk-governed procedural skills. Agents do not learn blindly from raw hallucination—every distilled skill passes through empirical evidence gates, sequence clustering, a 3-stage verification pipeline, and risk-tiered promotion.
+
+```
+                   Agent Runs (Harness / CLI)
+                              │
+                              ▼
+                1. Experience Capture (EXP-*)
+             [.sync/experience/records/EXP-*.json]
+                              │
+                              ▼
+                2. Rebuildable FTS5 Index
+             [.sync/experience/cache/experience_index.db]
+                              │
+                              ▼
+                3. Pattern Mining & Distillation
+             [Cluster similar trajectories (N ≥ 3)]
+                              │
+                              ▼
+                4. 3-Stage Verification Pipeline
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+Stage 1: Structural   Stage 2: Replay      Stage 3: Canary
+(Schema & D025)       (Sequence Fidelity)  (Sandbox Simulation)
+        └─────────────────────┬─────────────────────┘
+                              │ PASS (RECEIPT-*)
+                              ▼
+                5. Risk-Tiered Promotion
+       ┌──────────────────────┼──────────────────────┐
+       ▼                      ▼                      ▼
+  LOW Risk Tier         MEDIUM Risk Tier       HIGH / CRITICAL
+  (Auto-promotes)       (Claude / Lead QA)     (Human Approval Receipt)
+       └──────────────────────┬──────────────────────┘
+                              │
+                              ▼
+                6. Runtime Retrieval & Prompt Injection
+             [KnowledgeAPI.assemble_context(include_skills=True)]
+             [Strictly filtered by active Contract Scope Boundary]
+                              │
+                              ▼
+                7. Dynamic Staleness & Decay
+             [Code Drift Audits + Empirical Failure Decay]
+             [Auto-downgrade to STALE → Revalidation Workflow]
+```
+
+---
+
+### 🧪 Procedural Learning Hands-On Walkthrough
+
+#### 1. Experience Capture & Compilation
+Experiences (`EXP-*`) capture structured execution trajectories (tools used, modified files, verification receipts, and execution metrics). Experiences are generated in three ways:
+
+1. **Automatic on Agent Shutdown**: When an interactive worker (e.g., Codex or Gemini) completes work and runs `stackmind shutdown <agent>`, StackMind automatically extracts actions, diffs, and verification receipts from the work order and handoff to mint an `EXP-*` record.
+2. **Automatic on Harness Run**: Autonomous runs via `stackmind harness run-once --agent codex -p .` automatically record the episode upon staging and verification.
+3. **Explicit / Historical Backfill**: You can capture any completed work order or backfill entire project history:
+   ```powershell
+   # Capture a specific completed work order
+   stackmind experience capture --work-order WO-001 -p .
+
+   # Or harvest all existing completed work orders across your project at once
+   stackmind experience capture --backfill -p .
+
+   # Synchronize captured records into the rebuildable SQLite FTS5 search index
+   stackmind experience compile -p .
+   ```
+
+Once captured, inspect and search experiences:
+
+```powershell
+# List captured experience records
+stackmind experience list -p .
+
+# View detailed execution record with action steps & verification dimensions
+stackmind experience show EXP-a1b2c3d4e5f67890 -p .
+
+# Search past experiences with BM25 full-text ranking
+stackmind experience search "redis connection pool" -p .
+```
+
+#### 2. Pattern Mining & Candidate Distillation
+When an agent repeats a successful workflow across $N \ge 3$ verified episodes, StackMind clusters the trajectories and synthesizes candidate procedural skills:
+
+```powershell
+# Discover recurring execution clusters across verified episodes
+stackmind learn clusters -p .
+
+# Mine clusters and auto-distill candidate skills
+stackmind learn mine -p .
+
+# View distilled skill candidate manifests
+stackmind skill list --status candidate -p .
+```
+
+#### 3. 3-Stage Verification Pipeline (Replay / Canary)
+Before any candidate skill can be promoted, it must execute and pass the deterministic verification pipeline:
+
+```powershell
+# Run the 3-stage verification pipeline on a skill candidate
+stackmind skill test redis_cache_tuning -p .
+```
+* **Stage 1 (Structural):** Schema validation, step completeness, and D025 destructive operation compliance.
+* **Stage 2 (Historical Replay):** Computes action sequence congruence against cited `EXP-*` source records.
+* **Stage 3 (Canary Simulation):** Validates template variable resolution, preconditions, and sandbox boundaries.
+* Generates an immutable verification receipt: `.sync/skills/receipts/RECEIPT-<16hex>.json`.
+
+#### 4. Risk-Tiered Promotion Governance
+Skill promotion autonomy scales inversely with operational risk:
+
+```powershell
+# Auto-promote low-risk verified skills autonomously
+stackmind skill auto-promote -p .
+
+# Promote a medium-risk skill (authorized by lead architect)
+stackmind skill promote api_migration --actor claude --allow-medium -p .
+
+# Approve and promote a high-risk / critical skill (requires human review receipt)
+stackmind skill approve production_db_rollback -r "Approved post-incident runbook" -p .
+stackmind skill promote production_db_rollback --human -p .
+```
+
+#### 5. Runtime Retrieval & Prompt Context Assembly
+When an agent prepares context for a task, matching active skills are surfaced automatically while respecting the agent's **Contract Scope Boundary**:
+
+```powershell
+# Test skill retrieval matching task queries and contract boundaries
+stackmind skill retrieve "tune redis cache connection pool" -c .sync/contracts/WO-001.yaml -p .
+```
+
+In Python / Knowledge API:
+```python
+api = KnowledgeAPI(project_path, contract=contract)
+# Assembles context with procedural guidance block
+bundle = api.assemble_context("tune redis cache connection pool", include_skills=True)
+print(bundle.text)
+```
+
+Output injected into LLM prompt:
+```markdown
+### Procedural Guidance (Verified Active Skills)
+The following verified procedural skills match your task preconditions and active scope boundary:
+
+#### Skill: `redis_cache_tuning` (v1, SKILL-7f9a2b1c4e6d8a0f)
+*Risk:* `LOW` | *Confidence:* `0.95`
+*Description:* Tune Redis cache connection pool and client limits
+*Preconditions:*
+  - Redis service reachable
+*Execution Procedure:*
+  1. **[bash]** Query current pool stats (`redis-cli info clients`)
+  2. **[bash]** Configure client limits (`redis-cli config set maxclients 10000`)
+```
+
+#### 6. Dynamic Staleness, Decay & Revalidation
+Skills maintain trust through continuous empirical feedback and drift detection:
+
+```powershell
+# Record execution feedback (success boosts confidence; failure triggers decay penalty)
+stackmind skill feedback redis_cache_tuning --failure -e "Redis connection timed out" -p .
+
+# Audit all active skills for code drift (e.g. missing target modules or confidence < 0.50)
+stackmind skill audit -p .
+
+# Re-run verification pipeline to restore a STALE skill to ACTIVE
+stackmind skill revalidate redis_cache_tuning -p .
+```
+
+---
+
+## 💻 Procedural Learning CLI Reference
+
+| Command | Purpose |
+|---|---|
+| `stackmind experience list` | List captured experience records with verification status |
+| `stackmind experience show <ID>` | Display detailed experience record, actions, and observations |
+| `stackmind experience capture` | Capture experience from a work order or backfill project history |
+| `stackmind experience compile` | Incrementally update derived SQLite FTS5 experience search index |
+| `stackmind experience search "<QUERY>"` | Search historical experiences using BM25 full-text ranking |
+| `stackmind learn clusters` | Discover recurring execution clusters across learning-eligible episodes |
+| `stackmind learn mine` | Mine clusters ($N \ge 3$) and distill candidate procedural skills |
+| `stackmind skill create <NAME>` | Manually author a new candidate procedural skill manifest |
+| `stackmind skill list` | List skills filtered by lifecycle status (`active`, `candidate`, `stale`, etc.) |
+| `stackmind skill show <NAME>` | Display skill manifest, version history, steps, and provenance |
+| `stackmind skill test <NAME>` | Execute the 3-stage verification pipeline (Structural $\to$ Replay $\to$ Canary) |
+| `stackmind skill promote <NAME>` | Promote a verified skill version to `ACTIVE` under risk governance |
+| `stackmind skill approve <NAME>` | Record human/architect review approval receipt for high-risk skills |
+| `stackmind skill auto-promote` | Autonomously promote low-risk skills passing verification |
+| `stackmind skill retrieve "<QUERY>"` | Query active skills matching task intent and contract boundaries |
+| `stackmind skill rollback <NAME>` | Rollback active skill pointer to a previous manifest version |
+| `stackmind skill deprecate <NAME>` | Deprecate an obsolete skill and unlink active pointers |
+| `stackmind skill feedback <NAME>` | Record live execution feedback for dynamic confidence decay/reinforcement |
+| `stackmind skill audit` | Audit active skills for environment/code drift and low confidence |
+| `stackmind skill revalidate <NAME>` | Revalidate a `STALE` skill to restore `ACTIVE` status |
+| `stackmind skill stats` | View aggregate statistics across the procedural skill subsystem |
+
+---
+
 ## 📌 Core Governance Rules & Protocols
 
 | Rule / ID | Name | Role / Description |
@@ -262,5 +460,6 @@ stackmind graph explain-denial WO-001 --node auth.secrets
 | **Local-LLM** | GitOps Lead | Executes Git operations following D025 safety protocols and persists verified release commits. |
 | **CONTRACT-01** | Agent Contract Layer | Every worker is bounded by a structured YAML contract specifying `allow`, `deny`, file limits, and token budgets. |
 | **KNOW-01** | Knowledge API | Agents query compiled graph context instead of manually scraping files. Queries are checked against contract scope. |
+| **HARNESS-01** | Governed Harness Loop | Governed agent execution runtime enforcing pre/post-execution contract verification gates. |
 | **D025** | Destructive Safety | Destructive actions require backup verification, pre-condition checks, and architect approval. |
 | **Shutdown** | Mandatory Exit | Every agent session must conclude with `stackmind shutdown <agent>`. |

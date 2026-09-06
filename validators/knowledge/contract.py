@@ -75,8 +75,14 @@ class AgentContract:
         else:
             contract_data = raw_data
 
-        # Load schema
-        schema_path = project_path / "schemas" / "contract.schema.json"
+        # Load schema: check project override first, then package schema
+        schema_path = None
+        if project_path:
+            cand = project_path / "schemas" / "contract.schema.json"
+            if cand.exists():
+                schema_path = cand
+        if not schema_path:
+            schema_path = Path(__file__).resolve().parents[2] / "schemas" / "contract.schema.json"
         if not schema_path.exists():
             raise FileNotFoundError(f"Contract schema not found: {schema_path}")
         with open(schema_path, "r", encoding="utf-8") as f:

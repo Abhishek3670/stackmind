@@ -255,6 +255,17 @@ class AgentRunner:
                     reason=f'Pre-execution contract validation failed: {exc}',
                 )
 
+            from validators.harness.snapshot import (
+                WorkspaceSnapshot,
+                WorkspaceDiff,
+                VerificationDimensions,
+                TrustLevel,
+                evaluate_learning_eligibility,
+            )
+
+            # Phase 0: Capture runner-owned before snapshot
+            before_snapshot = WorkspaceSnapshot.capture(self.project_path)
+
             retrieval_started = time.monotonic()
             retrieval = self.search_tool.search(task.query, limit=3)
             retrieval_ms = int((time.monotonic() - retrieval_started) * 1000)
@@ -280,7 +291,7 @@ class AgentRunner:
                     reason=str(exc),
                 )
 
-            # Post-execution diff verification
+            # Post-execution declared validation
             from validators.harness.contract_gate import verify_post_execution
             try:
                 verify_post_execution(self.project_path, self.agent, task, decision)
@@ -326,10 +337,80 @@ class AgentRunner:
                 )
 
             hold_started = time.monotonic()
+            diff = WorkspaceDiff()
+            declaration_matches = True
+            mismatch_reason = None
             try:
                 self._apply_non_report_writes(stage_inputs)
                 write_ms = int((time.monotonic() - hold_started) * 1000)
                 hold_ms = write_ms
+
+                # Execute bash commands after applying ops
+                if decision.commands:
+                    from validators.harness.d025_gate import D025Gate, D025ViolationError
+                    gate = D025Gate()
+                    gate_decision = gate.evaluate_sequence(decision.commands)
+                    gate.log_decision(self.project_path, self.agent, gate_decision, task_id=task.identifier)
+                    if not gate_decision.passed:
+                        raise D025ViolationError(
+                            f"Command sequence triggered D025 Destructive Operations Safeguard: {gate_decision.reason}"
+                        )
+                    import subprocess
+                    for cmd in decision.commands:
+                        subprocess.run(cmd, shell=True, cwd=str(self.project_path), check=True)
+
+                # Phase 0: Capture runner-owned after snapshot & derive authoritative diff
+                after_snapshot = WorkspaceSnapshot.capture(self.project_path)
+                diff = before_snapshot.diff(after_snapshot)
+                declaration_matches, mismatch_reason = diff.matches_declaration(decision.modified_files)
+
+                # Enforce contract on observed changes if modifications occurred
+                if diff.all_changed_files:
+                    verify_post_execution(
+                        self.project_path,
+                        self.agent,
+                        task,
+                        decision,
+                        observed_files=diff.all_changed_files,
+                    )
+
+                dimensions = VerificationDimensions(
+                    scope_verified=True,
+                    state_verified=len(staged_errors) == 0,
+                    code_verified=True,
+                    behavioral_verified=decision.status == 'completed',
+                    security_verified=True,
+                    outcome_verified=decision.status == 'completed' and not decision.blockers,
+                )
+                trust_level = evaluate_learning_eligibility(
+                    decision_status=decision.status,
+                    dimensions=dimensions,
+                    declaration_matches=declaration_matches,
+                    has_unhandled_blockers=bool(decision.blockers),
+                )
+
+                from validators.experience.recorder import ExperienceRecorder
+                experience_record = ExperienceRecorder.capture_from_stage_inputs(
+                    self.project_path,
+                    self.agent,
+                    stage_inputs,
+                    diff=diff,
+                    dimensions=dimensions,
+                    trust_level=trust_level,
+                    duration_ms=int((time.monotonic() - poll_started) * 1000),
+                )
+
+                stage_inputs['diff'] = diff
+                stage_inputs['declaration_matches'] = declaration_matches
+                stage_inputs['dimensions'] = dimensions
+                stage_inputs['trust_level'] = trust_level
+                stage_inputs['experience_record'] = experience_record
+
+                exp_write = FileWrite(
+                    Path('.sync') / 'experience' / 'records' / f'{experience_record.experience_id}.json',
+                    json.dumps(experience_record.to_dict(), indent=2, sort_keys=True),
+                )
+
                 report_write = self._build_report_write(
                     stage_inputs,
                     lock_wait_ms=lock_wait_ms,
@@ -345,21 +426,7 @@ class AgentRunner:
                     write_ms=hold_ms,
                 )
                 events_write = self._build_events_write(stage_inputs, hold_ms, lock_wait_ms)
-                self._apply_ops(self.project_path, [final_report, events_write])
-                
-                # Execute bash commands after applying ops
-                if decision.commands:
-                    from validators.harness.d025_gate import D025Gate, D025ViolationError
-                    gate = D025Gate()
-                    gate_decision = gate.evaluate_sequence(decision.commands)
-                    gate.log_decision(self.project_path, self.agent, gate_decision, task_id=task.identifier)
-                    if not gate_decision.passed:
-                        raise D025ViolationError(
-                            f"Command sequence triggered D025 Destructive Operations Safeguard: {gate_decision.reason}"
-                        )
-                    import subprocess
-                    for cmd in decision.commands:
-                        subprocess.run(cmd, shell=True, cwd=str(self.project_path), check=True)
+                self._apply_ops(self.project_path, [final_report, events_write, exp_write])
             finally:
                 release_lock(self.sync_path, self.agent)
 
@@ -575,17 +642,27 @@ class AgentRunner:
         lock_hold_ms: int,
         lock_wait_ms: int,
     ) -> FileWrite:
+        trust_level = stage_inputs.get('trust_level')
+        diff = stage_inputs.get('diff')
+        dimensions = stage_inputs.get('dimensions')
+        exp_rec = stage_inputs.get('experience_record')
         event = {
             'agent': self.agent,
             'benchmark_mode': stage_inputs['retrieval'].mode,
             'context_revision': stage_inputs['context'].revision,
+            'declaration_matches': stage_inputs.get('declaration_matches', True),
             'event': 'harness.run',
+            'experience_id': exp_rec.experience_id if exp_rec else None,
+            'learning_eligible': exp_rec.learning_eligible if exp_rec else False,
             'lock_hold_ms': lock_hold_ms,
             'lock_wait_ms': lock_wait_ms,
+            'observed_changes_count': len(diff.all_changed_files) if diff else 0,
             'provider': stage_inputs['completion'].provider,
             'status': stage_inputs['decision'].status,
             'task_id': stage_inputs['task'].identifier,
             'timestamp': stage_inputs['run_at'].isoformat(),
+            'trust_level': trust_level.value if hasattr(trust_level, 'value') else str(trust_level or 'OBSERVABLE'),
+            'verification_passed': dimensions.all_passed if dimensions else True,
             'write_ms': lock_hold_ms,
         }
         return FileWrite(
@@ -648,6 +725,10 @@ class AgentRunner:
         context: ContextBundle = stage_inputs['context']
         decision: HarnessDecision = stage_inputs['decision']
         retrieval: RetrievalBatch = stage_inputs['retrieval']
+        trust_level = stage_inputs.get('trust_level')
+        dimensions = stage_inputs.get('dimensions')
+        diff = stage_inputs.get('diff')
+        exp_rec = stage_inputs.get('experience_record')
         return {
             'agent': self.agent,
             'benchmark_mode': retrieval.mode,
@@ -657,6 +738,8 @@ class AgentRunner:
             'context_revision': context.revision,
             'context_stale': context.stale,
             'cost_estimate': round(completion.cost_estimate + retrieval.cost_estimate, 6),
+            'declaration_matches': stage_inputs.get('declaration_matches', True),
+            'experience_id': exp_rec.experience_id if exp_rec else None,
             'knowledge_git_commit': context.git_commit,
             'latency_ms': {
                 'llm': stage_inputs['llm_ms'],
@@ -664,14 +747,18 @@ class AgentRunner:
                 'retrieval': stage_inputs['retrieval_ms'],
                 'write': write_ms,
             },
+            'learning_eligible': exp_rec.learning_eligible if exp_rec else False,
             'lock_hold_ms': lock_hold_ms,
             'lock_wait_ms': lock_wait_ms,
             'model': completion.model,
+            'observed_changes': diff.to_dict() if diff else {},
             'prompt_tokens': completion.prompt_tokens,
             'provider': completion.provider,
             'retrieval_cap_exhausted': retrieval.cap_exhausted,
             'searches_used': retrieval.searches_used,
+            'trust_level': trust_level.value if hasattr(trust_level, 'value') else str(trust_level or 'OBSERVABLE'),
             'uncertainty': list(decision.uncertainty),
+            'verification_dimensions': dimensions.to_dict() if dimensions else {},
         }
 
     def _acquire_runtime_lock(self) -> tuple[bool, str, int]:

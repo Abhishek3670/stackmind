@@ -92,7 +92,7 @@ pip install -e ".[dev]"
 ### Requirements
 
 - Python ≥ 3.10
-- Core dependencies: `click`, `libcst`, `jedi`, `pyyaml`, `jsonschema`, `rich`
+- Core dependencies: `click`, `pyyaml`, `jsonschema`, `rich` (optional: `sentence-transformers` via `stackmind[embeddings]`)
 - Dev dependencies: `pytest`, `pytest-cov`, `ruff`
 
 ### Standalone Knowledge Graph (Zero Config)

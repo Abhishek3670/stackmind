@@ -21,7 +21,7 @@ class LocalEmbeddingBackend:
                 raise ImportError(
                     "LocalEmbeddingBackend requires the optional "
                     "'sentence-transformers' dependency. Install it with "
-                    "`pip install sentence-transformers`."
+                    "`pip install \"stackmind[embeddings]\"`."
                 ) from exc
             self._model = SentenceTransformer(model_name)
 

@@ -76,8 +76,14 @@ def validate_knowledge(project_path: Path) -> KnowledgeValidationResult:
     return result
 
 
-def _load_symbol_schema(project_path: Path) -> dict[str, Any] | None:
-    schema_path = project_path / "schemas" / "knowledge" / "symbol.schema.json"
+def _load_symbol_schema(project_path: Path | None = None) -> dict[str, Any] | None:
+    schema_path = None
+    if project_path:
+        cand = project_path / "schemas" / "knowledge" / "symbol.schema.json"
+        if cand.exists():
+            schema_path = cand
+    if not schema_path:
+        schema_path = Path(__file__).resolve().parents[2] / "schemas" / "knowledge" / "symbol.schema.json"
     if not schema_path.exists():
         return None
     return json.loads(schema_path.read_text(encoding="utf-8"))
@@ -339,8 +345,14 @@ def _validate_storage(
             )
 
 
-def _load_schema(project_path: Path, name: str) -> dict[str, Any] | None:
-    path = project_path / "schemas" / "knowledge" / name
+def _load_schema(project_path: Path | None, name: str) -> dict[str, Any] | None:
+    path = None
+    if project_path:
+        cand = project_path / "schemas" / "knowledge" / name
+        if cand.exists():
+            path = cand
+    if not path:
+        path = Path(__file__).resolve().parents[2] / "schemas" / "knowledge" / name
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
 

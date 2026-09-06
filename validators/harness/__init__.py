@@ -23,6 +23,15 @@ from .runner import (
     LLMProvider,
 )
 
+from .snapshot import (
+    FileSnapshot,
+    TrustLevel,
+    VerificationDimensions,
+    WorkspaceDiff,
+    WorkspaceSnapshot,
+    evaluate_learning_eligibility,
+)
+
 __all__ = [
     'AgentRunner',
     'D025CommandClassification',
@@ -31,6 +40,7 @@ __all__ = [
     'D025ViolationError',
     'EchoLLMProvider',
     'EvidenceSnippet',
+    'FileSnapshot',
     'HarnessRunResult',
     'HarnessTask',
     'LLMProvider',
@@ -39,5 +49,10 @@ __all__ = [
     'SearchProvider',
     'SearchResult',
     'SessionSearchTool',
+    'TrustLevel',
+    'VerificationDimensions',
+    'WorkspaceDiff',
+    'WorkspaceSnapshot',
+    'evaluate_learning_eligibility',
     'sanitize_search_results',
 ]
