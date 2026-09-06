@@ -158,7 +158,7 @@ stackmind validate /path/to/project
 
 ### Requirements
 - Python ≥ 3.10
-- Core dependencies: `click`, `libcst`, `jedi`, `pyyaml`, `jsonschema`, `rich`
+- Core dependencies: `click`, `pyyaml`, `jsonschema`, `rich` (optional: `sentence-transformers` via `stackmind[embeddings]`)
 
 ### From Source
 

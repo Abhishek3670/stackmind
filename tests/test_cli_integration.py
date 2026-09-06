@@ -131,6 +131,8 @@ class TestGraphCLI:
         assert stats.exit_code == 0
         assert 'nodes:' in stats.output
         assert 'edges:' in stats.output
+        assert 'resolved_ratio:' in stats.output
+        assert 'diagnostics:' in stats.output
         assert 'revisions:' in stats.output
 
         versions = runner.invoke(cli, ['graph', 'versions', '--project', tmp_project])

@@ -120,12 +120,10 @@ def _discover_agents(sync_path: Path) -> list[str]:
     boot_dir = sync_path / "runtime" / "boot"
     if not boot_dir.exists():
         return []
-    agents = []
-    for f in boot_dir.iterdir():
-        if f.suffix == ".yaml" and f.stem.endswith(".boot"):
-            agent_name = f.stem.replace(".boot", "")
-            agents.append(agent_name)
-    return sorted(agents)
+    return sorted(
+        f.stem.removesuffix(".boot")
+        for f in boot_dir.glob("*.boot.yaml")
+    )
 
 
 # ─── Layer 1: Schema Validation ──────────────────────────────────
