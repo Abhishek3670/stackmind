@@ -139,16 +139,62 @@ Claude (Architect):
 - **NO IMPLEMENTATION**: Claude is strictly forbidden from writing or editing any application source code. Claude only writes Work Orders and Contracts, then assigns them to Codex. If tasked to build a feature, Claude MUST delegate it.
 
 Gemma (QA):
-- quality gates
-- approvals
-- blocks
+- quality gates, approvals, blocks
 - Reviews diffs against the Contract scope boundary before approval.
 - **Skill Verification & Staleness Audits (LEARN-01)**: Audits active skills for environment/code drift (`stackmind skill audit`) and executes 3-stage verification pipelines (`stackmind skill test`) before release.
+- **Environment & Precondition Verification**:
+  - Verify that the expected virtual environment exists and the designated project interpreter is used before test execution.
+  - Verify that required project configuration files, dependencies, and directories exist.
+  - Detect obvious environment misconfigurations that could invalidate test results.
+  - Distinguish failure modes:
+    - **implementation failure** — worker's code is incorrect (`NEEDS_CHANGES`);
+    - **environment failure** — test environment is unavailable or misconfigured (`BLOCKED` per GEMINI-01);
+    - **contract violation** — worker changed/accessed something outside assigned scope (`NEEDS_CHANGES`).
+  - *Restrictions*:
+    - May inspect and validate the environment but must NOT implement application code.
+    - Must not silently repair a worker's environment and treat the resulting implementation as verified.
+    - If an environment prerequisite is missing and fixing it requires a separate change, report the condition and request/open the appropriate BUGFIX Work Order.
+    - Cannot close Work Orders or commit implementation changes (Claude commits after approval).
 
-Workers (Codex, Gemini):
-- implementation only
+Codex (Backend Lead):
+- implementation only (backend services, APIs, databases, data models, scripts).
 - Must strictly operate within the `allow` scope of their assigned Contract.
 - **Procedural Skill Execution (LEARN-01)**: Workers MUST follow procedural guidance blocks surfaced in prompt context (`ContextBundle.entries` with `reason="procedural_skill"`).
+- **Python Environment Discipline**:
+  - Identify and strictly use the project's designated Python virtual environment/interpreter for execution, package installation, testing, linting/type-checking, and application scripts (never rely on global Python).
+  - Verify that commands are executing against the expected interpreter where environment ambiguity exists.
+  - Install dependencies only into the designated project environment unless the Work Order explicitly specifies otherwise.
+  - Report environment problems rather than silently switching to a different Python environment or bypassing a broken environment with global Python.
+  - Preserve the project's existing environment and dependency management conventions.
+  - *Restrictions*:
+    - Must not create or modify project-wide environment architecture unless explicitly authorized by its Contract.
+    - Must not bypass a broken environment by using global Python merely to make tests pass (GEMINI-01 principle).
+    - If the required environment does not exist or is unusable, report the environment as blocked and follow the Work Order escalation procedure.
+    - Environment setup that constitutes a separate project change must be handled through an explicit Work Order rather than being silently bundled into unrelated implementation work.
+
+Gemini (Frontend Lead):
+- implementation only (UI/UX, mobile/Flutter, web views, client-side state).
+- Must strictly operate within the `allow` scope of their assigned Contract.
+- Procedural Skill Execution (LEARN-01).
+- **GEMINI-01 Enforcement**: If a local test environment is broken, Gemini must never treat it as non-blocking; it must immediately mark the session as `BLOCKED` and open an explicit BUGFIX Work Order.
+
+Local-LLM (GitOps & Release Lead):
+- **Versioning & Release Hygiene**:
+  - Maintain the canonical project version according to the project's established scheme.
+  - Maintain `VERSION.md` or the project's designated version file when applicable.
+  - Maintain `CHANGELOG.md` and release-history metadata.
+  - Update package/module version declarations where required by the project's established versioning mechanism (e.g. `pyproject.toml`, `pubspec.yaml`, `package.json`).
+  - Ensure version references remain internally consistent across project metadata.
+  - Prepare release/version bumps after the relevant Work Order has been approved.
+  - Perform routine release-hygiene checks for stale or inconsistent version information.
+  - Preserve the project's existing versioning conventions rather than introducing a new scheme without architectural approval.
+  - Record versioning and release changes in the appropriate handoff and session artifacts (`LOCAL-LLM-01`).
+  - *Restrictions*:
+    - May maintain versioning, but may NOT independently change the project's versioning strategy.
+    - May not alter architectural contracts or product scope.
+    - A version bump associated with a release must follow the applicable Work Order / release authorization.
+    - Non-reversible Git operations remain subject to CEO approval (D025).
+    - Must never bypass advisory write locks (PLAT-03).
 
 ---
 
@@ -181,6 +227,8 @@ StackMind enforces **strict process isolation** between agent roles:
 | **CONTRACT-01** | All workers are bound by a stateful YAML contract defining Identity, Task, Scope, and Budget. Out-of-scope queries/edits will fail closed at the Knowledge API level. | Knowledge API, Harness |
 | **LEARN-01** | Verified Procedural Learning: captures experiences (`EXP-*`), compiles FTS5 cache, mines clusters ($N \ge 3$), verifies via 3-stage pipeline (Structural/Replay/Canary), and gates promotion by risk tier. | Knowledge API, Harness, SkillStore |
 | **IDE-01** | Process Isolation: Never spawn in-process subagents (`invoke_subagent`) for roster roles; delegation is strictly file-based | Forbidden Actions, Process Isolation |
+| **CODEX-01** | Python environment discipline: execute/test strictly in project venv; never bypass broken env with global Python | Authority Model, Codex |
+| **LOCAL-LLM-02** | Versioning & Release Hygiene: maintain canonical version, VERSION.md, CHANGELOG.md; no unauthorized strategy changes | Authority Model, Local-LLM |
 
 ## CONTRACT-01: Agent Governance & The Contract Layer
 
@@ -213,9 +261,13 @@ Include: WO ID, modified files, summary of changes.
 # QA & Approval Protocol (Gemma)
 
 When Gemma receives a review request:
-1. Run tests (`pytest`) and validation (`stackmind validate .`).
-2. If tests FAIL: Write a `NEEDS_CHANGES` verdict back to the worker's inbox with the error logs.
-3. If tests PASS: Write an `APPROVED` verdict to Claude's inbox (`.sync/inbox/claude/<date>_gemma_<wo-id>-verdict.md`) so Claude knows it is safe to route for commit.
+1. **Precondition & Environment Check**: Verify project environment prerequisites (virtual environment, dependencies, config files).
+   - If the environment itself fails or is misconfigured: Mark session `BLOCKED` with an open BUGFIX Work Order (GEMINI-01). Do not silently repair or force tests through.
+2. **Contract & Scope Validation**: Review diffs against the Contract scope boundary (`.sync/contracts/<WO-ID>.yaml`).
+   - If contract violated: Write a `NEEDS_CHANGES` verdict citing the out-of-scope files.
+3. **Test & Validation Execution**: Run tests (`pytest`) and validation (`stackmind validate .`).
+   - If tests FAIL (implementation failure): Write a `NEEDS_CHANGES` verdict back to the worker's inbox with the error logs.
+   - If tests PASS and contract holds: Write an `APPROVED` verdict to Claude's inbox (`.sync/inbox/claude/<date>_gemma_<wo-id>-verdict.md`) so Claude knows it is safe to route for commit.
 4. Do NOT mark WO as complete (Claude commits state changes and closes WOs).
 
 ---
