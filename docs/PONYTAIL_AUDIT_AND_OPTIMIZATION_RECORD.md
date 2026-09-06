@@ -4,7 +4,7 @@
 **Auditor:** Antigravity / Ponytail-Audit  
 **Target:** StackMind Repository (`W:\Aatish\Stuff\stackmind`)  
 **Status:** Approved Refactors Applied & Verified  
-**Baseline Version:** v3.1.0  
+**Target Version:** v3.1.1 (Patch Release)  
 
 ---
 
